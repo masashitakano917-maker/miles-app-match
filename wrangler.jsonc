@@ -1,0 +1,8 @@
+{
+  "name": "miles-app-match",
+  "compatibility_date": "2025-09-09",
+  "assets": {
+    "directory": "./dist",
+    "serve_single_page_application": true
+  }
+}
