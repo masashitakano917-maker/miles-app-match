@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Professional, Order, Service, Label } from '../types';
-import { Users, ClipboardList, Tags, Settings, LogOut, Plus, Edit, Trash2, X } from 'lucide-react';
+import { Users, ClipboardList, Tags, Settings, LogOut, Plus, Edit, Trash2, X, Eye } from 'lucide-react';
 
 interface AdminDashboardProps {
   user: User;
