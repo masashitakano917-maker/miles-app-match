@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Order, Professional } from '../types';
 import { Bell, CheckCircle, Clock, MapPin, LogOut, Phone, Mail } from 'lucide-react';
+import { NotificationService } from '../services/NotificationService';
 
 interface ProfessionalDashboardProps {
   user: User;
@@ -27,7 +28,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
   };
 
   // Mock pending requests
-  const mockRequests: Order[] = [
+  const [mockRequests, setMockRequests] = useState<Order[]>([
     {
       id: 'order-1',
       customerId: 'customer-1',
@@ -67,10 +68,10 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
       createdAt: new Date(Date.now() - 86400000), // 1 day ago
       updatedAt: new Date(Date.now() - 86400000)
     }
-  ];
+  ]);
 
   // Mock active jobs
-  const mockActiveJobs: Order[] = [
+  const [mockActiveJobs, setMockActiveJobs] = useState<Order[]>([
     {
       id: 'order-3',
       customerId: 'customer-3',
@@ -90,13 +91,34 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
       createdAt: new Date(Date.now() - 172800000), // 2 days ago
       updatedAt: new Date(Date.now() - 86400000)
     }
-  ];
+  ]);
 
-  const handleAcceptJob = (orderId: string) => {
+  const handleAcceptJob = async (orderId: string) => {
+    const order = mockRequests.find(r => r.id === orderId);
+    if (!order) return;
+
+    // Move from requests to active jobs
+    const updatedOrder = { ...order, status: 'in_progress' as const, assignedProfessionalId: user.id };
+    setMockRequests(mockRequests.filter(r => r.id !== orderId));
+    setMockActiveJobs([...mockActiveJobs, updatedOrder]);
+
+    // Send notifications
+    await NotificationService.sendMatchNotification(updatedOrder, professionalData);
+
     alert(`案件 ${orderId} を受注しました。お客様とAdminに通知メールを送信いたします。`);
   };
 
-  const handleCompleteJob = (orderId: string) => {
+  const handleCompleteJob = async (orderId: string) => {
+    const order = mockActiveJobs.find(j => j.id === orderId);
+    if (!order) return;
+
+    // Update job status
+    const updatedOrder = { ...order, status: 'completed' as const };
+    setMockActiveJobs(mockActiveJobs.filter(j => j.id !== orderId));
+
+    // Send notifications
+    await NotificationService.sendCompletionNotification(updatedOrder, professionalData);
+
     alert(`案件 ${orderId} を完了しました。お客様とAdminに完了通知メールを送信いたします。`);
   };
 
@@ -137,18 +159,18 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-900">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-gray-800 shadow-lg border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">プロフェッショナルダッシュボード</h1>
-              <p className="text-gray-600">こんにちは、{user.name}さん</p>
+              <h1 className="text-2xl font-bold text-white">プロフェッショナルダッシュボード</h1>
+              <p className="text-gray-300">こんにちは、{user.name}さん</p>
             </div>
             <button
               onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
             >
               <LogOut className="w-4 h-4" />
               ログアウト
@@ -160,21 +182,21 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">完了案件</p>
-                <p className="text-2xl font-bold text-gray-900">{professionalData.completedJobs}</p>
+                <p className="text-sm font-medium text-gray-400">完了案件</p>
+                <p className="text-2xl font-bold text-white">{professionalData.completedJobs}</p>
               </div>
               <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">評価</p>
-                <p className="text-2xl font-bold text-gray-900">⭐ {professionalData.rating}</p>
+                <p className="text-sm font-medium text-gray-400">評価</p>
+                <p className="text-2xl font-bold text-white">⭐ {professionalData.rating}</p>
               </div>
               <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
                 <span className="text-yellow-600 font-bold">★</span>
@@ -182,21 +204,21 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">新規依頼</p>
-                <p className="text-2xl font-bold text-gray-900">{mockRequests.length}</p>
+                <p className="text-sm font-medium text-gray-400">新規依頼</p>
+                <p className="text-2xl font-bold text-white">{mockRequests.length}</p>
               </div>
-              <Bell className="w-8 h-8 text-blue-500" />
+              <Bell className="w-8 h-8 text-orange-500" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">進行中</p>
-                <p className="text-2xl font-bold text-gray-900">{mockActiveJobs.length}</p>
+                <p className="text-sm font-medium text-gray-400">進行中</p>
+                <p className="text-2xl font-bold text-white">{mockActiveJobs.length}</p>
               </div>
               <Clock className="w-8 h-8 text-purple-500" />
             </div>
@@ -204,7 +226,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
         </div>
 
         {/* Navigation Tabs */}
-        <div className="border-b border-gray-200 mb-8">
+        <div className="border-b border-gray-700 mb-8">
           <nav className="flex space-x-8">
             {[
               { id: 'requests', label: '新規依頼', icon: Bell },
@@ -216,8 +238,8 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
                 onClick={() => setActiveTab(id)}
                 className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm ${
                   activeTab === id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-orange-500 text-orange-400'
+                    : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -230,50 +252,50 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
         {/* New Requests Tab */}
         {activeTab === 'requests' && (
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">新規依頼</h2>
+            <h2 className="text-xl font-semibold text-white mb-6">新規依頼</h2>
             
             <div className="space-y-6">
               {mockRequests.map((request) => (
-                <div key={request.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div key={request.id} className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900">
+                        <h3 className="text-lg font-semibold text-white">
                           {getServiceName(request.serviceId, request.planId)}
                         </h3>
-                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                        <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-medium">
                           新規
                         </span>
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
-                          <p className="text-sm font-medium text-gray-600 mb-1">お客様情報</p>
-                          <p className="text-gray-900">{request.customerName}</p>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <p className="text-sm font-medium text-gray-400 mb-1">お客様情報</p>
+                          <p className="text-white">{request.customerName}</p>
+                          <div className="flex items-center gap-2 text-sm text-gray-400">
                             <Phone className="w-4 h-4" />
                             {request.customerPhone}
                           </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="flex items-center gap-2 text-sm text-gray-400">
                             <Mail className="w-4 h-4" />
                             {request.customerEmail}
                           </div>
                         </div>
                         
                         <div>
-                          <p className="text-sm font-medium text-gray-600 mb-1">作業場所</p>
+                          <p className="text-sm font-medium text-gray-400 mb-1">作業場所</p>
                           <div className="flex items-start gap-2">
                             <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
                             <div>
-                              <p className="text-gray-900">〒{request.address.postalCode}</p>
-                              <p className="text-gray-600">
+                              <p className="text-white">〒{request.address.postalCode}</p>
+                              <p className="text-gray-400">
                                 {request.address.prefecture} {request.address.city}
                               </p>
-                              <p className="text-gray-600">{request.address.detail}</p>
+                              <p className="text-gray-400">{request.address.detail}</p>
                             </div>
                           </div>
                           {request.meetingPlace && (
-                            <p className="text-sm text-gray-600 mt-2">
+                            <p className="text-sm text-gray-400 mt-2">
                               集合場所: {request.meetingPlace}
                             </p>
                           )}
@@ -281,15 +303,15 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
                       </div>
 
                       {request.specialNotes && (
-                        <div className="mb-4 p-3 bg-yellow-50 rounded-lg">
-                          <p className="text-sm font-medium text-gray-700 mb-1">特記事項</p>
-                          <p className="text-sm text-gray-600">{request.specialNotes}</p>
+                        <div className="mb-4 p-3 bg-yellow-900 bg-opacity-30 rounded-lg border border-yellow-700">
+                          <p className="text-sm font-medium text-yellow-300 mb-1">特記事項</p>
+                          <p className="text-sm text-yellow-200">{request.specialNotes}</p>
                         </div>
                       )}
 
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-2xl font-bold text-green-600">
+                          <p className="text-2xl font-bold text-orange-400">
                             ¥{getPlanPrice(request.planId).toLocaleString()}
                           </p>
                           <p className="text-sm text-gray-500">
@@ -298,7 +320,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
                         </div>
                         <button
                           onClick={() => handleAcceptJob(request.id)}
-                          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                          className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-6 py-2 rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all font-medium"
                         >
                           受注する
                         </button>
@@ -311,7 +333,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
               {mockRequests.length === 0 && (
                 <div className="text-center py-12">
                   <Bell className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">現在、新規依頼はありません</p>
+                  <p className="text-gray-400">現在、新規依頼はありません</p>
                 </div>
               )}
             </div>
@@ -321,15 +343,15 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
         {/* Active Jobs Tab */}
         {activeTab === 'active' && (
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">進行中の案件</h2>
+            <h2 className="text-xl font-semibold text-white mb-6">進行中の案件</h2>
             
             <div className="space-y-6">
               {mockActiveJobs.map((job) => (
-                <div key={job.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div key={job.id} className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900">
+                        <h3 className="text-lg font-semibold text-white">
                           {getServiceName(job.serviceId, job.planId)}
                         </h3>
                         <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
@@ -339,28 +361,28 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
-                          <p className="text-sm font-medium text-gray-600 mb-1">お客様情報</p>
-                          <p className="text-gray-900">{job.customerName}</p>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <p className="text-sm font-medium text-gray-400 mb-1">お客様情報</p>
+                          <p className="text-white">{job.customerName}</p>
+                          <div className="flex items-center gap-2 text-sm text-gray-400">
                             <Phone className="w-4 h-4" />
                             {job.customerPhone}
                           </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="flex items-center gap-2 text-sm text-gray-400">
                             <Mail className="w-4 h-4" />
                             {job.customerEmail}
                           </div>
                         </div>
                         
                         <div>
-                          <p className="text-sm font-medium text-gray-600 mb-1">作業場所</p>
+                          <p className="text-sm font-medium text-gray-400 mb-1">作業場所</p>
                           <div className="flex items-start gap-2">
                             <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
                             <div>
-                              <p className="text-gray-900">〒{job.address.postalCode}</p>
-                              <p className="text-gray-600">
+                              <p className="text-white">〒{job.address.postalCode}</p>
+                              <p className="text-gray-400">
                                 {job.address.prefecture} {job.address.city}
                               </p>
-                              <p className="text-gray-600">{job.address.detail}</p>
+                              <p className="text-gray-400">{job.address.detail}</p>
                             </div>
                           </div>
                         </div>
@@ -368,7 +390,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
 
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-2xl font-bold text-green-600">
+                          <p className="text-2xl font-bold text-orange-400">
                             ¥{getPlanPrice(job.planId).toLocaleString()}
                           </p>
                           <p className="text-sm text-gray-500">
@@ -377,7 +399,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
                         </div>
                         <button
                           onClick={() => handleCompleteJob(job.id)}
-                          className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium"
+                          className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-2 rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-medium"
                         >
                           完了報告
                         </button>
@@ -390,7 +412,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
               {mockActiveJobs.length === 0 && (
                 <div className="text-center py-12">
                   <Clock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">現在、進行中の案件はありません</p>
+                  <p className="text-gray-400">現在、進行中の案件はありません</p>
                 </div>
               )}
             </div>
@@ -400,57 +422,57 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
         {/* Profile Tab */}
         {activeTab === 'profile' && (
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">プロフィール</h2>
+            <h2 className="text-xl font-semibold text-white mb-6">プロフィール</h2>
             
-            <div className="bg-white p-8 rounded-xl shadow-sm">
+            <div className="bg-gray-800 p-8 rounded-xl shadow-sm border border-gray-700">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">基本情報</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">基本情報</h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600">お名前</label>
-                      <p className="mt-1 text-gray-900">{professionalData.name}</p>
+                      <label className="block text-sm font-medium text-gray-400">お名前</label>
+                      <p className="mt-1 text-white">{professionalData.name}</p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-600">メールアドレス</label>
-                      <p className="mt-1 text-gray-900">{professionalData.email}</p>
+                      <label className="block text-sm font-medium text-gray-400">メールアドレス</label>
+                      <p className="mt-1 text-white">{professionalData.email}</p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-600">電話番号</label>
-                      <p className="mt-1 text-gray-900">{professionalData.phone}</p>
+                      <label className="block text-sm font-medium text-gray-400">電話番号</label>
+                      <p className="mt-1 text-white">{professionalData.phone}</p>
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">スキル・資格</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">スキル・資格</h3>
                   <div className="space-y-2">
                     {professionalData.labels.map((label) => (
-                      <div key={label.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                        <span className="font-medium text-blue-900">{label.name}</span>
-                        <span className="text-sm text-blue-600">{label.category}</span>
+                      <div key={label.id} className="flex items-center justify-between p-3 bg-orange-900 bg-opacity-30 rounded-lg border border-orange-700">
+                        <span className="font-medium text-orange-300">{label.name}</span>
+                        <span className="text-sm text-orange-400">{label.category}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">実績</h3>
+              <div className="mt-8 pt-8 border-t border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4">実績</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-blue-600">{professionalData.completedJobs}</div>
-                    <p className="text-sm text-gray-600">完了案件数</p>
+                    <div className="text-3xl font-bold text-orange-400">{professionalData.completedJobs}</div>
+                    <p className="text-sm text-gray-400">完了案件数</p>
                   </div>
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-yellow-600">⭐ {professionalData.rating}</div>
-                    <p className="text-sm text-gray-600">平均評価</p>
+                    <div className="text-3xl font-bold text-yellow-400">⭐ {professionalData.rating}</div>
+                    <p className="text-sm text-gray-400">平均評価</p>
                   </div>
                   <div className="text-center">
-                    <div className={`text-3xl font-bold ${professionalData.isActive ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`text-3xl font-bold ${professionalData.isActive ? 'text-green-400' : 'text-red-400'}`}>
                       {professionalData.isActive ? 'ON' : 'OFF'}
                     </div>
-                    <p className="text-sm text-gray-600">稼働状況</p>
+                    <p className="text-sm text-gray-400">稼働状況</p>
                   </div>
                 </div>
               </div>
