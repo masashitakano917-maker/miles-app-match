@@ -31,7 +31,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showStatusEditModal, setShowStatusEditModal] = useState(false);
   const [selectedOrderForStatusEdit, setSelectedOrderForStatusEdit] = useState<Order | null>(null);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
-  const [selectedOrderForStatusEdit, setSelectedOrderForStatusEdit] = useState<Order | null>(null);
   const [showStatusEditModal, setShowStatusEditModal] = useState(false);
   
   const [newProfessional, setNewProfessional] = useState({
