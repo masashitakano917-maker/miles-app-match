@@ -60,6 +60,7 @@ export interface Order {
     third?: Date;
   };
   scheduledDate?: Date;
+  completedDate?: Date;
   cancellationFee?: number;
   cancellationReason?: string;
   createdAt: Date;
