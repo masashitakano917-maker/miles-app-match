@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, Order, Professional } from '../types';
 import { Bell, CheckCircle, Clock, MapPin, LogOut, Phone, Mail, Eye, X } from 'lucide-react';
 import { NotificationService } from '../services/NotificationService';
+import { DataService } from '../services/DataService';
 
 interface ProfessionalDashboardProps {
   user: User;
