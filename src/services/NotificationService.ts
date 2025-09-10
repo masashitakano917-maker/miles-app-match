@@ -1,4 +1,5 @@
 import { Order, Plan, Professional } from '../types';
+import { EmailService } from './EmailService';
 
 export class NotificationService {
   // 実際のメール送信設定
@@ -169,18 +170,13 @@ export class NotificationService {
     console.log(`📧 メール送信: ${to} - ${subject}`);
     
     try {
-      // 実際の実装では、SendGrid、AWS SES、Nodemailerなどを使用
-      // const response = await fetch('/api/send-email', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ to, subject, content })
-      // });
+      // 実際のメール送信
+      const success = await EmailService.sendEmail(to, subject, content);
       
-      // デモ用：コンソールにメール内容を表示
-      console.log(`📧 メール内容:\n件名: ${subject}\n宛先: ${to}\n内容: ${content.substring(0, 100)}...`);
-      
-      // 実際のメール送信をシミュレート
-      await new Promise(resolve => setTimeout(resolve, 500));
+      if (!success) {
+        // SendGridが設定されていない場合はコンソールに表示
+        console.log(`📧 メール内容 (SendGrid未設定):\n件名: ${subject}\n宛先: ${to}\n内容: ${content.substring(0, 100)}...`);
+      }
       
     } catch (error) {
       console.error(`❌ メール送信エラー (${to}):`, error);
@@ -202,6 +198,14 @@ export class NotificationService {
         <li>作業場所: ${order.address.prefecture} ${order.address.city} ${order.address.detail}</li>
       </ul>
       <p>プロフェッショナルのマッチングが完了次第、改めてご連絡いたします。</p>
+      ${order.preferredDates ? `
+        <h3>ご希望日時</h3>
+        <ul>
+          <li>第一希望: ${order.preferredDates.first.toLocaleDateString('ja-JP')} ${order.preferredDates.first.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</li>
+          ${order.preferredDates.second ? `<li>第二希望: ${order.preferredDates.second.toLocaleDateString('ja-JP')} ${order.preferredDates.second.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</li>` : ''}
+          ${order.preferredDates.third ? `<li>第三希望: ${order.preferredDates.third.toLocaleDateString('ja-JP')} ${order.preferredDates.third.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</li>` : ''}
+        </ul>
+      ` : ''}
     `;
   }
 

@@ -54,6 +54,11 @@ export interface Order {
   meetingPlace?: string;
   specialNotes?: string;
   assignedProfessionalId?: string;
+  preferredDates?: {
+    first: Date;
+    second?: Date;
+    third?: Date;
+  };
   scheduledDate?: Date;
   cancellationFee?: number;
   cancellationReason?: string;
