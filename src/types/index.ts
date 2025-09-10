@@ -72,6 +72,10 @@ export interface Professional extends User {
   isActive: boolean;
   completedJobs: number;
   rating: number;
+  bio?: string;
+  equipment?: string;
+  experience?: string;
+  password?: string;
   address?: {
     postalCode: string;
     prefecture: string;
