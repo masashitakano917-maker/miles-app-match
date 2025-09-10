@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Professional, Order, Service, Label } from '../types';
-import { Users, Calendar, Settings, LogOut, Plus, Edit, Trash2, Eye, X, ChevronDown, CheckCircle } from 'lucide-react';
+import { Users, Calendar, Settings, LogOut, Plus, Edit, Trash2, Eye, X, ChevronDown, CheckCircle, ClipboardList, Tags, Upload } from 'lucide-react';
 import { BusinessDayService } from '../services/BusinessDayService';
 import { NotificationService } from '../services/NotificationService';
 import { DataService } from '../services/DataService';
@@ -27,7 +27,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     feePercentage: number;
     businessHours: number;
     reason: string;
+  } | null>(null);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
+  const [selectedOrderForStatusEdit, setSelectedOrderForStatusEdit] = useState<Order | null>(null);
+  const [showStatusEditModal, setShowStatusEditModal] = useState(false);
   
   const [newProfessional, setNewProfessional] = useState({
     name: '',
