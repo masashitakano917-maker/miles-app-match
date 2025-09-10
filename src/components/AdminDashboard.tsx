@@ -17,7 +17,9 @@ import {
   CheckCircle,
   Search,
   Filter,
-  BarChart3
+  BarChart3,
+  ChevronDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';
@@ -53,12 +55,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     customer: '',
     service: '',
     status: '',
-    startDate: '',
-    endDate: '',
-    completedStartDate: '',
-    completedEndDate: '',
-    scheduledStartDate: '',
-    scheduledEndDate: ''
+    dateType: 'created' as 'created' | 'scheduled' | 'completed',
+    dateFrom: '',
+    dateTo: ''
   });
 
   const [professionalSearchFilters, setProfessionalSearchFilters] = useState({
@@ -67,6 +66,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     phone: '',
     label: ''
   });
+
+  // 統計の並べ替え
+  const [statsSortBy, setStatsSortBy] = useState<'name' | 'completedJobs' | 'rating'>('completedJobs');
+  const [statsSortOrder, setStatsSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [newProfessional, setNewProfessional] = useState({
     name: '',
@@ -128,16 +131,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     
     const matchesStatus = !orderSearchFilters.status || order.status === orderSearchFilters.status;
     
-    const matchesCreatedDate = (!orderSearchFilters.startDate || new Date(order.createdAt) >= new Date(orderSearchFilters.startDate)) &&
-      (!orderSearchFilters.endDate || new Date(order.createdAt) <= new Date(orderSearchFilters.endDate));
+    // 日付フィルタリング
+    let matchesDate = true;
+    if (orderSearchFilters.dateFrom || orderSearchFilters.dateTo) {
+      let targetDate: Date | undefined;
+      
+      switch (orderSearchFilters.dateType) {
+        case 'created':
+          targetDate = order.createdAt;
+          break;
+        case 'scheduled':
+          targetDate = order.scheduledDate;
+          break;
+        case 'completed':
+          targetDate = order.completedDate;
+          break;
+      }
+      
+      if (targetDate) {
+        const fromMatch = !orderSearchFilters.dateFrom || targetDate >= new Date(orderSearchFilters.dateFrom);
+        const toMatch = !orderSearchFilters.dateTo || targetDate <= new Date(orderSearchFilters.dateTo + 'T23:59:59');
+        matchesDate = fromMatch && toMatch;
+      } else {
+        matchesDate = false;
+      }
+    }
     
-    const matchesCompletedDate = (!orderSearchFilters.completedStartDate || !order.completedDate || new Date(order.completedDate) >= new Date(orderSearchFilters.completedStartDate)) &&
-      (!orderSearchFilters.completedEndDate || !order.completedDate || new Date(order.completedDate) <= new Date(orderSearchFilters.completedEndDate));
-    
-    const matchesScheduledDate = (!orderSearchFilters.scheduledStartDate || !order.scheduledDate || new Date(order.scheduledDate) >= new Date(orderSearchFilters.scheduledStartDate)) &&
-      (!orderSearchFilters.scheduledEndDate || !order.scheduledDate || new Date(order.scheduledDate) <= new Date(orderSearchFilters.scheduledEndDate));
-    
-    return matchesCustomer && matchesService && matchesStatus && matchesCreatedDate && matchesCompletedDate && matchesScheduledDate;
+    return matchesCustomer && matchesService && matchesStatus && matchesDate;
   });
 
   const filteredProfessionals = professionals.filter(professional => {
@@ -176,6 +196,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       };
     });
   };
+
+  // Generate professional statistics
+  const professionalStats = professionals.map(professional => {
+    const professionalOrders = orders.filter(order => 
+      order.assignedProfessionalId === professional.id && order.status === 'completed'
+    );
+    
+    const serviceBreakdown = professionalOrders.reduce((acc, order) => {
+      const serviceName = getServiceName(order.serviceId, order.planId);
+      acc[serviceName] = (acc[serviceName] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    return {
+      professional,
+      completedJobs: professionalOrders.length,
+      serviceBreakdown,
+      rating: professional.rating || 0
+    };
+  }).sort((a, b) => {
+    let comparison = 0;
+    
+    switch (statsSortBy) {
+      case 'name':
+        comparison = a.professional.name.localeCompare(b.professional.name);
+        break;
+      case 'completedJobs':
+        comparison = a.completedJobs - b.completedJobs;
+        break;
+      case 'rating':
+        comparison = a.rating - b.rating;
+        break;
+    }
+    
+    return statsSortOrder === 'desc' ? -comparison : comparison;
+  });
 
   const handleShowOrderDetail = (order: Order) => {
     setSelectedOrderForDetail(order);
@@ -394,6 +450,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     }
   };
 
+  const clearOrderFilters = () => {
+    setOrderSearchFilters({
+      customer: '',
+      service: '',
+      status: '',
+      dateType: 'created',
+      dateFrom: '',
+      dateTo: ''
+    });
+  };
+
+  const clearProfessionalFilters = () => {
+    setProfessionalSearchFilters({
+      name: '',
+      email: '',
+      phone: '',
+      label: ''
+    });
+  };
+
+  const handleStatsSort = (sortBy: 'name' | 'completedJobs' | 'rating') => {
+    if (statsSortBy === sortBy) {
+      setStatsSortOrder(statsSortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setStatsSortBy(sortBy);
+      setStatsSortOrder('desc');
+    }
+  };
+
   const getServiceName = (serviceId: string, planId: string) => {
     const serviceNames: { [key: string]: { [key: string]: string } } = {
       'photo-service': {
@@ -500,32 +585,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
             <h2 className="text-xl font-semibold text-white mb-6">依頼管理</h2>
             
             {/* Search Filters */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-6">
+            <div className="bg-gray-800 p-4 rounded-xl mb-6 border border-gray-700">
               <div className="flex items-center gap-2 mb-4">
                 <Search className="w-5 h-5 text-gray-400" />
-                <h3 className="text-lg font-semibold text-white">検索・フィルター</h3>
+                <h3 className="text-lg font-medium text-white">検索フィルター</h3>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">カスタマー検索</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">カスタマー</label>
                   <input
                     type="text"
-                    placeholder="名前またはメールアドレス"
+                    placeholder="名前またはメール"
                     value={orderSearchFilters.customer}
                     onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, customer: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">サービス検索</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">サービス</label>
                   <input
                     type="text"
                     placeholder="サービス名"
                     value={orderSearchFilters.service}
                     onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, service: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
                   />
                 </div>
                 
@@ -534,7 +619,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <select
                     value={orderSearchFilters.status}
                     onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, status: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
                   >
                     <option value="">すべて</option>
                     <option value="pending">受付中</option>
@@ -544,86 +629,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     <option value="cancelled">キャンセル</option>
                   </select>
                 </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">日付タイプ</label>
+                  <select
+                    value={orderSearchFilters.dateType}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, dateType: e.target.value as 'created' | 'scheduled' | 'completed' })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
+                  >
+                    <option value="created">作成日</option>
+                    <option value="scheduled">予定日</option>
+                    <option value="completed">完了日</option>
+                  </select>
+                </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">作成日（開始）</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">開始日</label>
                   <input
                     type="date"
-                    value={orderSearchFilters.startDate}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, startDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    value={orderSearchFilters.dateFrom}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, dateFrom: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">作成日（終了）</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">終了日</label>
                   <input
                     type="date"
-                    value={orderSearchFilters.endDate}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, endDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">予定日（開始）</label>
-                  <input
-                    type="date"
-                    value={orderSearchFilters.scheduledStartDate}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, scheduledStartDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">予定日（終了）</label>
-                  <input
-                    type="date"
-                    value={orderSearchFilters.scheduledEndDate}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, scheduledEndDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">完了日（開始）</label>
-                  <input
-                    type="date"
-                    value={orderSearchFilters.completedStartDate}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, completedStartDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">完了日（終了）</label>
-                  <input
-                    type="date"
-                    value={orderSearchFilters.completedEndDate}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, completedEndDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    value={orderSearchFilters.dateTo}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, dateTo: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
                   />
                 </div>
               </div>
               
-              <div className="flex justify-end mt-4">
+              <div className="flex justify-end">
                 <button
-                  onClick={() => setOrderSearchFilters({
-                    customer: '',
-                    service: '',
-                    status: '',
-                    startDate: '',
-                    endDate: '',
-                    completedStartDate: '',
-                    completedEndDate: '',
-                    scheduledStartDate: '',
-                    scheduledEndDate: ''
-                  })}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  onClick={clearOrderFilters}
+                  className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors text-sm"
                 >
-                  クリア
+                  フィルタークリア
                 </button>
               </div>
             </div>
@@ -1032,52 +1080,88 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">統計</h2>
             
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-              <h3 className="text-lg font-semibold text-white mb-6">プロフェッショナル別実績</h3>
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-white">プロフェッショナル別実績</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-400">並べ替え:</span>
+                  <button
+                    onClick={() => handleStatsSort('name')}
+                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition-colors ${
+                      statsSortBy === 'name' ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    名前
+                    {statsSortBy === 'name' && <ArrowUpDown className="w-3 h-3" />}
+                  </button>
+                  <button
+                    onClick={() => handleStatsSort('completedJobs')}
+                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition-colors ${
+                      statsSortBy === 'completedJobs' ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    完了件数
+                    {statsSortBy === 'completedJobs' && <ArrowUpDown className="w-3 h-3" />}
+                  </button>
+                  <button
+                    onClick={() => handleStatsSort('rating')}
+                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition-colors ${
+                      statsSortBy === 'rating' ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    評価
+                    {statsSortBy === 'rating' && <ArrowUpDown className="w-3 h-3" />}
+                  </button>
+                </div>
+              </div>
               
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-700">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">プロフェッショナル</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">総完了件数</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">サービス別内訳</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">評価</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ステータス</th>
+                  <thead>
+                    <tr className="border-b border-gray-700">
+                      <th className="text-left py-3 px-4 text-gray-300 font-medium">プロフェッショナル</th>
+                      <th className="text-left py-3 px-4 text-gray-300 font-medium">完了件数</th>
+                      <th className="text-left py-3 px-4 text-gray-300 font-medium">サービス内訳</th>
+                      <th className="text-left py-3 px-4 text-gray-300 font-medium">評価</th>
+                      <th className="text-left py-3 px-4 text-gray-300 font-medium">ステータス</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-700">
-                    {getProfessionalStats().map(({ professional, totalJobs, serviceBreakdown }) => (
-                      <tr key={professional.id} className="hover:bg-gray-700">
-                        <td className="px-6 py-4 whitespace-nowrap">
+                  <tbody>
+                    {professionalStats.map(({ professional, completedJobs, serviceBreakdown, rating }) => (
+                      <tr key={professional.id} className="border-b border-gray-700 hover:bg-gray-700">
+                        <td className="py-3 px-4">
                           <div>
-                            <div className="text-sm font-medium text-white">{professional.name}</div>
-                            <div className="text-sm text-gray-400">{professional.email}</div>
+                            <p className="text-white font-medium">{professional.name}</p>
+                            <p className="text-sm text-gray-400">{professional.email}</p>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-2xl font-bold text-orange-400">{totalJobs}</div>
+                        <td className="py-3 px-4">
+                          <span className="text-2xl font-bold text-orange-400">{completedJobs}</span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="py-3 px-4">
                           <div className="space-y-1">
-                            {Object.entries(serviceBreakdown).map(([service, count]) => (
-                              <div key={service} className="flex justify-between items-center">
-                                <span className="text-sm text-gray-300">{service}</span>
-                                <span className="text-sm font-medium text-white">{count}件</span>
-                              </div>
-                            ))}
-                            {Object.keys(serviceBreakdown).length === 0 && (
+                            {Object.entries(serviceBreakdown).length > 0 ? (
+                              Object.entries(serviceBreakdown).map(([service, count]) => (
+                                <div key={service} className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-300">{service}</span>
+                                  <span className="text-sm text-orange-400 font-medium">{count}件</span>
+                                </div>
+                              ))
+                            ) : (
                               <span className="text-sm text-gray-500">実績なし</span>
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          ⭐ {professional.rating}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1">
+                            <span className="text-yellow-400">⭐</span>
+                            <span className="text-white font-medium">{rating}</span>
+                          </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            professional.isActive
-                              ? 'bg-green-100 text-green-800'
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            professional.isActive 
+                              ? 'bg-green-100 text-green-800' 
                               : 'bg-red-100 text-red-800'
                           }`}>
                             {professional.isActive ? 'アクティブ' : '非アクティブ'}
@@ -1088,6 +1172,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   </tbody>
                 </table>
               </div>
+              
+              {professionalStats.length === 0 && (
+                <div className="text-center py-8">
+                  <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-400">統計データがありません</p>
+                </div>
+              )}
             </div>
           </div>
         )}
