@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Professional, Order, Service, Label } from '../types';
 import { Users, ClipboardList, Tags, Settings, LogOut, Plus, Edit, Trash2, X, Eye, Upload } from 'lucide-react';
 import { BusinessDayService } from '../services/BusinessDayService';
@@ -52,28 +52,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     DataService.loadProfessionals()
   );
 
-  const mockOrders: Order[] = [
-    {
-      id: 'order-1',
-      customerId: 'customer-1',
-      serviceId: 'photo-service',
-      planId: 'real-estate',
-      status: 'pending',
-      customerName: '山田太郎',
-      customerPhone: '090-1111-2222',
-      customerEmail: 'yamada@example.com',
-      address: {
-        postalCode: '100-0001',
-        prefecture: '東京都',
-        city: '千代田区',
-        detail: '丸の内1-1-1'
-      },
-      specialNotes: 'エレベーターなし',
-      scheduledDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
-  ];
+  const [mockOrders, setMockOrders] = useState<Order[]>([]);
+
+  useEffect(() => {
+    const loadOrders = () => {
+      const loadedOrders = DataService.loadOrders();
+      console.log('📊 Admin: 注文データを読み込み:', loadedOrders.length, '件');
+      setMockOrders(loadedOrders);
+    };
+
+    // 初回読み込み
+    loadOrders();
+
+    // カスタマーからの注文更新を監視
+    const handleOrdersUpdate = (event: CustomEvent) => {
+      console.log('📊 Admin: 注文データ更新を検知');
+      loadOrders();
+    };
+
+    window.addEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
+    };
+  }, []);
 
   const [mockLabels, setMockLabels] = useState<Label[]>([
     { id: 'l1', name: '不動産撮影', category: '写真撮影' },
