@@ -3,6 +3,7 @@ import { User, Service, Plan, Order } from '../types';
 import { ShoppingCart, Clock, CheckCircle, XCircle, LogOut, ChevronRight, ArrowLeft, Eye, X } from 'lucide-react';
 import { NotificationService } from '../services/NotificationService';
 import { BusinessDayService } from '../services/BusinessDayService';
+import { DataService } from '../services/DataService';
 
 interface CustomerDashboardProps {
   user: User;
@@ -34,7 +35,13 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
     city: '',
     detail: '',
     meetingPlace: '',
-    specialNotes: ''
+    specialNotes: '',
+    firstPreferredDate: '',
+    firstPreferredTime: '',
+    secondPreferredDate: '',
+    secondPreferredTime: '',
+    thirdPreferredDate: '',
+    thirdPreferredTime: ''
   });
 
   // Mock services data
@@ -75,24 +82,8 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
   ];
 
   const [mockOrders, setMockOrders] = useState<Order[]>([
-    {
-      id: 'order-1',
-      customerId: user.id,
-      serviceId: 'photo-service',
-      planId: 'real-estate',
-      status: 'pending',
-      customerName: '田中太郎',
-      customerPhone: '090-1234-5678',
-      customerEmail: 'customer@example.com',
-      address: {
-        postalCode: '100-0001',
-        prefecture: '東京都',
-        city: '千代田区',
-        detail: '丸の内1-1-1'
-      },
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
+    // 永続化されたデータを読み込み
+    ...DataService.loadOrders().filter(order => order.customerId === user.id)
   ]);
 
   const handleServiceSelect = (service: Service) => {
@@ -117,6 +108,18 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
   const handleFinalOrder = async () => {
     if (!selectedPlan) return;
 
+    // 希望日時の処理
+    const preferredDates: any = {};
+    if (orderData.firstPreferredDate && orderData.firstPreferredTime) {
+      preferredDates.first = new Date(`${orderData.firstPreferredDate}T${orderData.firstPreferredTime}`);
+    }
+    if (orderData.secondPreferredDate && orderData.secondPreferredTime) {
+      preferredDates.second = new Date(`${orderData.secondPreferredDate}T${orderData.secondPreferredTime}`);
+    }
+    if (orderData.thirdPreferredDate && orderData.thirdPreferredTime) {
+      preferredDates.third = new Date(`${orderData.thirdPreferredDate}T${orderData.thirdPreferredTime}`);
+    }
+
     const newOrder: Order = {
       id: `order-${Date.now()}`,
       customerId: user.id,
@@ -134,12 +137,17 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
       },
       meetingPlace: orderData.meetingPlace,
       specialNotes: orderData.specialNotes,
+      preferredDates: Object.keys(preferredDates).length > 0 ? preferredDates : undefined,
       scheduledDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 1週間後をデフォルト
       createdAt: new Date(),
       updatedAt: new Date()
     };
 
-    setMockOrders([...mockOrders, newOrder]);
+    const updatedOrders = [...mockOrders, newOrder];
+    setMockOrders(updatedOrders);
+    
+    // データを永続化
+    DataService.saveOrders(updatedOrders);
 
     // Send notifications
     await NotificationService.sendOrderNotification(newOrder, selectedPlan);
@@ -157,7 +165,13 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
       city: '',
       detail: '',
       meetingPlace: '',
-      specialNotes: ''
+      specialNotes: '',
+      firstPreferredDate: '',
+      firstPreferredTime: '',
+      secondPreferredDate: '',
+      secondPreferredTime: '',
+      thirdPreferredDate: '',
+      thirdPreferredTime: ''
     });
     setActiveTab('orders');
   };
@@ -238,7 +252,13 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
       city: '',
       detail: '',
       meetingPlace: '',
-      specialNotes: ''
+      specialNotes: '',
+      firstPreferredDate: '',
+      firstPreferredTime: '',
+      secondPreferredDate: '',
+      secondPreferredTime: '',
+      thirdPreferredDate: '',
+      thirdPreferredTime: ''
     });
   };
 
@@ -567,6 +587,88 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
               </div>
 
               <div className="mt-6">
+                <h4 className="text-lg font-semibold text-gray-300 mb-4">ご希望日時</h4>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        第一希望日 <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={orderData.firstPreferredDate}
+                        onChange={(e) => setOrderData({ ...orderData, firstPreferredDate: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        第一希望時刻 <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        value={orderData.firstPreferredTime}
+                        onChange={(e) => setOrderData({ ...orderData, firstPreferredTime: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        第二希望日
+                      </label>
+                      <input
+                        type="date"
+                        value={orderData.secondPreferredDate}
+                        onChange={(e) => setOrderData({ ...orderData, secondPreferredDate: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        第二希望時刻
+                      </label>
+                      <input
+                        type="time"
+                        value={orderData.secondPreferredTime}
+                        onChange={(e) => setOrderData({ ...orderData, secondPreferredTime: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        第三希望日
+                      </label>
+                      <input
+                        type="date"
+                        value={orderData.thirdPreferredDate}
+                        onChange={(e) => setOrderData({ ...orderData, thirdPreferredDate: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        第三希望時刻
+                      </label>
+                      <input
+                        type="time"
+                        value={orderData.thirdPreferredTime}
+                        onChange={(e) => setOrderData({ ...orderData, thirdPreferredTime: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6">
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   特記事項
                 </label>
@@ -649,6 +751,21 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
                   </div>
                 </div>
               </div>
+
+              {(orderData.firstPreferredDate && orderData.firstPreferredTime) && (
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-white mb-4">ご希望日時</h4>
+                  <div className="space-y-2 text-gray-300 bg-gray-700 p-4 rounded-lg">
+                    <p><span className="font-medium">第一希望:</span> {new Date(`${orderData.firstPreferredDate}T${orderData.firstPreferredTime}`).toLocaleDateString('ja-JP')} {new Date(`${orderData.firstPreferredDate}T${orderData.firstPreferredTime}`).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
+                    {(orderData.secondPreferredDate && orderData.secondPreferredTime) && (
+                      <p><span className="font-medium">第二希望:</span> {new Date(`${orderData.secondPreferredDate}T${orderData.secondPreferredTime}`).toLocaleDateString('ja-JP')} {new Date(`${orderData.secondPreferredDate}T${orderData.secondPreferredTime}`).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
+                    )}
+                    {(orderData.thirdPreferredDate && orderData.thirdPreferredTime) && (
+                      <p><span className="font-medium">第三希望:</span> {new Date(`${orderData.thirdPreferredDate}T${orderData.thirdPreferredTime}`).toLocaleDateString('ja-JP')} {new Date(`${orderData.thirdPreferredDate}T${orderData.thirdPreferredTime}`).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {orderData.specialNotes && (
                 <div className="mb-8">
@@ -802,6 +919,21 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
                 </div>
               </div>
             </div>
+
+            {selectedOrderForDetail.preferredDates && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-white mb-4">ご希望日時</h4>
+                <div className="space-y-2 text-gray-300">
+                  <p><span className="font-medium text-gray-400">第一希望:</span> {selectedOrderForDetail.preferredDates.first.toLocaleDateString('ja-JP')} {selectedOrderForDetail.preferredDates.first.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
+                  {selectedOrderForDetail.preferredDates.second && (
+                    <p><span className="font-medium text-gray-400">第二希望:</span> {selectedOrderForDetail.preferredDates.second.toLocaleDateString('ja-JP')} {selectedOrderForDetail.preferredDates.second.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
+                  )}
+                  {selectedOrderForDetail.preferredDates.third && (
+                    <p><span className="font-medium text-gray-400">第三希望:</span> {selectedOrderForDetail.preferredDates.third.toLocaleDateString('ja-JP')} {selectedOrderForDetail.preferredDates.third.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {selectedOrderForDetail.specialNotes && (
               <div className="mt-6">
