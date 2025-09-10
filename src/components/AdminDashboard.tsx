@@ -14,7 +14,10 @@ import {
   Upload,
   ClipboardList,
   Calendar,
-  CheckCircle
+  CheckCircle,
+  Search,
+  Filter,
+  BarChart3
 } from 'lucide-react';
 import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';
@@ -30,8 +33,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [showOrderDetail, setShowOrderDetail] = useState(false);
+  const [showProfessionalDetail, setShowProfessionalDetail] = useState(false);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null);
+  const [selectedProfessionalForDetail, setSelectedProfessionalForDetail] = useState<Professional | null>(null);
   const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null);
   const [cancellationInfo, setCancellationInfo] = useState<{
     fee: number;
@@ -42,6 +47,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [selectedOrderForStatusEdit, setSelectedOrderForStatusEdit] = useState<Order | null>(null);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
   const [showStatusEditModal, setShowStatusEditModal] = useState(false);
+
+  // Search states
+  const [orderSearchFilters, setOrderSearchFilters] = useState({
+    customer: '',
+    service: '',
+    status: '',
+    startDate: '',
+    endDate: '',
+    completedStartDate: '',
+    completedEndDate: '',
+    scheduledStartDate: '',
+    scheduledEndDate: ''
+  });
+
+  const [professionalSearchFilters, setProfessionalSearchFilters] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    label: ''
+  });
 
   const [newProfessional, setNewProfessional] = useState({
     name: '',
@@ -92,9 +117,74 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     setProfessionals(loadedProfessionals);
   };
 
+  // Filter functions
+  const filteredOrders = orders.filter(order => {
+    const matchesCustomer = !orderSearchFilters.customer || 
+      order.customerName.toLowerCase().includes(orderSearchFilters.customer.toLowerCase()) ||
+      order.customerEmail.toLowerCase().includes(orderSearchFilters.customer.toLowerCase());
+    
+    const matchesService = !orderSearchFilters.service || 
+      getServiceName(order.serviceId, order.planId).toLowerCase().includes(orderSearchFilters.service.toLowerCase());
+    
+    const matchesStatus = !orderSearchFilters.status || order.status === orderSearchFilters.status;
+    
+    const matchesCreatedDate = (!orderSearchFilters.startDate || new Date(order.createdAt) >= new Date(orderSearchFilters.startDate)) &&
+      (!orderSearchFilters.endDate || new Date(order.createdAt) <= new Date(orderSearchFilters.endDate));
+    
+    const matchesCompletedDate = (!orderSearchFilters.completedStartDate || !order.completedDate || new Date(order.completedDate) >= new Date(orderSearchFilters.completedStartDate)) &&
+      (!orderSearchFilters.completedEndDate || !order.completedDate || new Date(order.completedDate) <= new Date(orderSearchFilters.completedEndDate));
+    
+    const matchesScheduledDate = (!orderSearchFilters.scheduledStartDate || !order.scheduledDate || new Date(order.scheduledDate) >= new Date(orderSearchFilters.scheduledStartDate)) &&
+      (!orderSearchFilters.scheduledEndDate || !order.scheduledDate || new Date(order.scheduledDate) <= new Date(orderSearchFilters.scheduledEndDate));
+    
+    return matchesCustomer && matchesService && matchesStatus && matchesCreatedDate && matchesCompletedDate && matchesScheduledDate;
+  });
+
+  const filteredProfessionals = professionals.filter(professional => {
+    const matchesName = !professionalSearchFilters.name || 
+      professional.name.toLowerCase().includes(professionalSearchFilters.name.toLowerCase());
+    
+    const matchesEmail = !professionalSearchFilters.email || 
+      professional.email.toLowerCase().includes(professionalSearchFilters.email.toLowerCase());
+    
+    const matchesPhone = !professionalSearchFilters.phone || 
+      (professional.phone && professional.phone.includes(professionalSearchFilters.phone));
+    
+    const matchesLabel = !professionalSearchFilters.label || 
+      professional.labels.some(label => label.name.toLowerCase().includes(professionalSearchFilters.label.toLowerCase()));
+    
+    return matchesName && matchesEmail && matchesPhone && matchesLabel;
+  });
+
+  // Statistics calculation
+  const getProfessionalStats = () => {
+    return professionals.map(professional => {
+      const professionalOrders = orders.filter(order => 
+        order.assignedProfessionalId === professional.id && order.status === 'completed'
+      );
+      
+      const serviceStats: { [key: string]: number } = {};
+      professionalOrders.forEach(order => {
+        const serviceName = getServiceName(order.serviceId, order.planId);
+        serviceStats[serviceName] = (serviceStats[serviceName] || 0) + 1;
+      });
+      
+      return {
+        professional,
+        totalJobs: professionalOrders.length,
+        serviceBreakdown: serviceStats
+      };
+    });
+  };
+
   const handleShowOrderDetail = (order: Order) => {
     setSelectedOrderForDetail(order);
     setShowOrderDetail(true);
+  };
+
+  const handleShowProfessionalDetail = (professional: Professional) => {
+    setSelectedProfessionalForDetail(professional);
+    setShowProfessionalDetail(true);
   };
 
   const handleShowCancelConfirmation = (order: Order) => {
@@ -382,8 +472,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         <div className="border-b border-gray-700 mb-8">
           <nav className="flex space-x-8">
             {[
-              { id: 'professionals', label: 'プロフェッショナル管理', icon: Users },
               { id: 'orders', label: '依頼管理', icon: ShoppingCart },
+              { id: 'professionals', label: 'プロフェッショナル管理', icon: Users },
+              { id: 'statistics', label: '統計', icon: BarChart3 },
               { id: 'labels', label: 'ラベル管理', icon: ClipboardList },
               { id: 'settings', label: '設定', icon: Settings }
             ].map(({ id, label, icon: Icon }) => (
@@ -408,6 +499,135 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">依頼管理</h2>
             
+            {/* Search Filters */}
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Search className="w-5 h-5 text-gray-400" />
+                <h3 className="text-lg font-semibold text-white">検索・フィルター</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">カスタマー検索</label>
+                  <input
+                    type="text"
+                    placeholder="名前またはメールアドレス"
+                    value={orderSearchFilters.customer}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, customer: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">サービス検索</label>
+                  <input
+                    type="text"
+                    placeholder="サービス名"
+                    value={orderSearchFilters.service}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, service: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">ステータス</label>
+                  <select
+                    value={orderSearchFilters.status}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, status: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  >
+                    <option value="">すべて</option>
+                    <option value="pending">受付中</option>
+                    <option value="matched">マッチ済</option>
+                    <option value="in_progress">進行中</option>
+                    <option value="completed">完了</option>
+                    <option value="cancelled">キャンセル</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">作成日（開始）</label>
+                  <input
+                    type="date"
+                    value={orderSearchFilters.startDate}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, startDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">作成日（終了）</label>
+                  <input
+                    type="date"
+                    value={orderSearchFilters.endDate}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, endDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">予定日（開始）</label>
+                  <input
+                    type="date"
+                    value={orderSearchFilters.scheduledStartDate}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, scheduledStartDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">予定日（終了）</label>
+                  <input
+                    type="date"
+                    value={orderSearchFilters.scheduledEndDate}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, scheduledEndDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">完了日（開始）</label>
+                  <input
+                    type="date"
+                    value={orderSearchFilters.completedStartDate}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, completedStartDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">完了日（終了）</label>
+                  <input
+                    type="date"
+                    value={orderSearchFilters.completedEndDate}
+                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, completedEndDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={() => setOrderSearchFilters({
+                    customer: '',
+                    service: '',
+                    status: '',
+                    startDate: '',
+                    endDate: '',
+                    completedStartDate: '',
+                    completedEndDate: '',
+                    scheduledStartDate: '',
+                    scheduledEndDate: ''
+                  })}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  クリア
+                </button>
+              </div>
+            </div>
+            
             <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -425,7 +645,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
-                    {orders.map((order) => (
+                    {filteredOrders.map((order) => (
                       <tr key={order.id} className="hover:bg-gray-700">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{order.id}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
@@ -482,10 +702,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 </table>
               </div>
 
-              {orders.length === 0 && (
+              {filteredOrders.length === 0 && (
                 <div className="text-center py-12">
                   <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-400">依頼がありません</p>
+                  <p className="text-gray-400">条件に一致する依頼がありません</p>
                 </div>
               )}
             </div>
@@ -497,6 +717,74 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold text-white">プロフェッショナル管理</h2>
+            </div>
+
+            {/* Search Filters */}
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Search className="w-5 h-5 text-gray-400" />
+                <h3 className="text-lg font-semibold text-white">検索・フィルター</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">名前検索</label>
+                  <input
+                    type="text"
+                    placeholder="名前"
+                    value={professionalSearchFilters.name}
+                    onChange={(e) => setProfessionalSearchFilters({ ...professionalSearchFilters, name: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">メール検索</label>
+                  <input
+                    type="text"
+                    placeholder="メールアドレス"
+                    value={professionalSearchFilters.email}
+                    onChange={(e) => setProfessionalSearchFilters({ ...professionalSearchFilters, email: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">電話検索</label>
+                  <input
+                    type="text"
+                    placeholder="電話番号"
+                    value={professionalSearchFilters.phone}
+                    onChange={(e) => setProfessionalSearchFilters({ ...professionalSearchFilters, phone: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">ラベル検索</label>
+                  <input
+                    type="text"
+                    placeholder="スキル・ラベル"
+                    value={professionalSearchFilters.label}
+                    onChange={(e) => setProfessionalSearchFilters({ ...professionalSearchFilters, label: e.target.value })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={() => setProfessionalSearchFilters({
+                    name: '',
+                    email: '',
+                    phone: '',
+                    label: ''
+                  })}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  クリア
+                </button>
+              </div>
             </div>
 
             {/* Add/Edit Professional Form */}
@@ -669,7 +957,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
-                    {professionals.map((professional) => (
+                    {filteredProfessionals.map((professional) => (
                       <tr key={professional.id} className="hover:bg-gray-700">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-white">{professional.name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{professional.email}</td>
@@ -701,6 +989,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">
                             <button
+                              onClick={() => handleShowProfessionalDetail(professional)}
+                              className="text-green-400 hover:text-green-300 p-1 rounded hover:bg-gray-600"
+                              title="詳細表示"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => handleEditProfessional(professional)}
                               className="text-blue-400 hover:text-blue-300 p-1 rounded hover:bg-gray-600"
                               title="編集"
@@ -722,12 +1017,77 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 </table>
               </div>
 
-              {professionals.length === 0 && (
+              {filteredProfessionals.length === 0 && (
                 <div className="text-center py-12">
                   <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-400">プロフェッショナルが登録されていません</p>
+                  <p className="text-gray-400">条件に一致するプロフェッショナルがいません</p>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Statistics Tab */}
+        {activeTab === 'statistics' && (
+          <div>
+            <h2 className="text-xl font-semibold text-white mb-6">統計</h2>
+            
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+              <h3 className="text-lg font-semibold text-white mb-6">プロフェッショナル別実績</h3>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-700">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">プロフェッショナル</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">総完了件数</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">サービス別内訳</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">評価</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ステータス</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {getProfessionalStats().map(({ professional, totalJobs, serviceBreakdown }) => (
+                      <tr key={professional.id} className="hover:bg-gray-700">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm font-medium text-white">{professional.name}</div>
+                            <div className="text-sm text-gray-400">{professional.email}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-2xl font-bold text-orange-400">{totalJobs}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            {Object.entries(serviceBreakdown).map(([service, count]) => (
+                              <div key={service} className="flex justify-between items-center">
+                                <span className="text-sm text-gray-300">{service}</span>
+                                <span className="text-sm font-medium text-white">{count}件</span>
+                              </div>
+                            ))}
+                            {Object.keys(serviceBreakdown).length === 0 && (
+                              <span className="text-sm text-gray-500">実績なし</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          ⭐ {professional.rating}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            professional.isActive
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {professional.isActive ? 'アクティブ' : '非アクティブ'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -914,6 +1274,119 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
             <div className="flex justify-end mt-8">
               <button
                 onClick={() => setShowOrderDetail(false)}
+                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Professional Detail Modal */}
+      {showProfessionalDetail && selectedProfessionalForDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl max-w-4xl w-full p-6 border border-gray-700 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-white">プロフェッショナル詳細</h3>
+              <button
+                onClick={() => setShowProfessionalDetail(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-4">基本情報</h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400">お名前</label>
+                    <p className="mt-1 text-white">{selectedProfessionalForDetail.name}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400">メールアドレス</label>
+                    <p className="mt-1 text-white">{selectedProfessionalForDetail.email}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400">電話番号</label>
+                    <p className="mt-1 text-white">{selectedProfessionalForDetail.phone || '未設定'}</p>
+                  </div>
+                  {selectedProfessionalForDetail.address && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400">住所</label>
+                      <p className="mt-1 text-white">
+                        〒{selectedProfessionalForDetail.address.postalCode}<br />
+                        {selectedProfessionalForDetail.address.prefecture} {selectedProfessionalForDetail.address.city}<br />
+                        {selectedProfessionalForDetail.address.detail}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-4">スキル・資格</h4>
+                <div className="space-y-2">
+                  {selectedProfessionalForDetail.labels && selectedProfessionalForDetail.labels.length > 0 ? (
+                    selectedProfessionalForDetail.labels.map((label) => (
+                      <div key={label.id} className="flex items-center justify-between p-3 bg-orange-900 bg-opacity-30 rounded-lg border border-orange-700">
+                        <span className="font-medium text-orange-300">{label.name}</span>
+                        <span className="text-sm text-orange-400">{label.category}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-400">スキル・資格が設定されていません</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {selectedProfessionalForDetail.bio && (
+              <div className="mt-8">
+                <h4 className="text-lg font-semibold text-white mb-4">自己紹介</h4>
+                <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedProfessionalForDetail.bio}</p>
+              </div>
+            )}
+
+            {selectedProfessionalForDetail.equipment && (
+              <div className="mt-8">
+                <h4 className="text-lg font-semibold text-white mb-4">プロ機材</h4>
+                <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedProfessionalForDetail.equipment}</p>
+              </div>
+            )}
+
+            {selectedProfessionalForDetail.experience && (
+              <div className="mt-8">
+                <h4 className="text-lg font-semibold text-white mb-4">経歴</h4>
+                <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedProfessionalForDetail.experience}</p>
+              </div>
+            )}
+
+            <div className="mt-8 pt-8 border-t border-gray-700">
+              <h4 className="text-lg font-semibold text-white mb-4">実績</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-orange-400">{selectedProfessionalForDetail.completedJobs}</div>
+                  <p className="text-sm text-gray-400">完了案件数</p>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-yellow-400">⭐ {selectedProfessionalForDetail.rating}</div>
+                  <p className="text-sm text-gray-400">平均評価</p>
+                </div>
+                <div className="text-center">
+                  <div className={`text-3xl font-bold ${selectedProfessionalForDetail.isActive ? 'text-green-400' : 'text-red-400'}`}>
+                    {selectedProfessionalForDetail.isActive ? 'ON' : 'OFF'}
+                  </div>
+                  <p className="text-sm text-gray-400">稼働状況</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end mt-8">
+              <button
+                onClick={() => setShowProfessionalDetail(false)}
                 className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
               >
                 閉じる
