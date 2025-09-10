@@ -225,7 +225,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
     setShowOrderForm(true);
   };
 
-  const handleCancelOrder = () => {
+  const handleCancelOrderForm = () => {
     setShowConfirmation(false);
     setSelectedService(null);
     setSelectedPlan(null);
@@ -303,6 +303,22 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
       }
     };
     return serviceNames[serviceId]?.[planId] || 'サービス';
+  };
+
+  const getStatusBadge = (status: Order['status']) => {
+    const statusConfig = {
+      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '受付中' },
+      matched: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'マッチ済' },
+      in_progress: { bg: 'bg-purple-100', text: 'text-purple-800', label: '進行中' },
+      completed: { bg: 'bg-green-100', text: 'text-green-800', label: '完了' },
+      cancelled: { bg: 'bg-red-100', text: 'text-red-800', label: 'キャンセル' }
+    };
+    const config = statusConfig[status];
+    return (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        {config.label}
+      </span>
+    );
   };
 
   return (
@@ -643,7 +659,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
 
               <div className="flex justify-end gap-4">
                 <button
-                  onClick={handleCancelOrder}
+                  onClick={handleCancelOrderForm}
                   className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
                 >
                   キャンセル
@@ -773,29 +789,34 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
                   <p><span className="font-medium text-gray-400">注文日:</span> {selectedOrderForDetail.createdAt.toLocaleDateString('ja-JP')}</p>
                 </div>
               </div>
-    </div>
-  );
-};
 
               <div>
                 <h4 className="text-lg font-semibold text-white mb-4">作業場所</h4>
                 <div className="space-y-2 text-gray-300">
                   <p>〒{selectedOrderForDetail.address.postalCode}</p>
                   <p>{selectedOrderForDetail.address.prefecture} {selectedOrderForDetail.address.city}</p>
+                  <p>{selectedOrderForDetail.address.detail}</p>
+                  {selectedOrderForDetail.meetingPlace && (
+                    <p><span className="font-medium text-gray-400">集合場所:</span> {selectedOrderForDetail.meetingPlace}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {selectedOrderForDetail.specialNotes && (
               <div className="mt-6">
                 <h4 className="text-lg font-semibold text-white mb-4">特記事項</h4>
                 <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedOrderForDetail.specialNotes}</p>
               </div>
             )}
-                  <p>{selectedOrderForDetail.address.detail}</p>
+
             {selectedOrderForDetail.assignedProfessionalId && (
               <div className="mt-6">
                 <h4 className="text-lg font-semibold text-white mb-4">担当プロフェッショナル</h4>
                 <p className="text-gray-300">ID: {selectedOrderForDetail.assignedProfessionalId}</p>
               </div>
             )}
-                  {selectedOrderForDetail.meetingPlace && (
+
             {selectedOrderForDetail.cancellationFee && (
               <div className="mt-6">
                 <h4 className="text-lg font-semibold text-white mb-4">キャンセル情報</h4>
@@ -817,7 +838,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
           </div>
         </div>
       )}
-                    <p><span className="font-medium text-gray-400">集合場所:</span> {selectedOrderForDetail.meetingPlace}</p>
+
       {/* Cancel Confirmation Modal */}
       {showCancelConfirmation && selectedOrderForCancel && cancellationInfo && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -875,23 +896,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
           </div>
         </div>
       )}
-                  )}
-                </div>
-              </div>
-            </div>
-const getStatusBadge = (status: Order['status']) => {
-  const statusConfig = {
-    pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '受付中' },
-    matched: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'マッチ済' },
-    in_progress: { bg: 'bg-purple-100', text: 'text-purple-800', label: '進行中' },
-    completed: { bg: 'bg-green-100', text: 'text-green-800', label: '完了' },
-    cancelled: { bg: 'bg-red-100', text: 'text-red-800', label: 'キャンセル' }
-  };
-  const config = statusConfig[status];
-  return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
-      {config.label}
-    </span>
+    </div>
   );
 };
 
