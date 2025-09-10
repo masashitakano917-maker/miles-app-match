@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Professional, Order, Service, Label } from '../types';
-import { Users, ShoppingCart, Settings, LogOut, Plus, Edit, Trash2, Save, X, Eye, Calendar, CheckCircle, Clock, XCircle, MapPin, Phone, Mail, Upload } from 'lucide-react';
+import { Users, ShoppingCart, Settings, LogOut, Plus, Edit, Trash2, Save, X, Eye, Upload, ClipboardList } from 'lucide-react';
 import { BusinessDayService } from '../services/BusinessDayService';
 import { NotificationService } from '../services/NotificationService';
 import { DataService } from '../services/DataService';
