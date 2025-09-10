@@ -561,12 +561,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                         ステータス
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        案件予定日
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        完了日
-                      </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                         作成日
                       </th>
@@ -1181,6 +1175,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   </p>
                   <p><span className="font-medium">作成日:</span> {selectedOrder.createdAt.toLocaleDateString('ja-JP')}</p>
                   <p><span className="font-medium">更新日:</span> {selectedOrder.updatedAt.toLocaleDateString('ja-JP')}</p>
+                  <p><span className="font-medium text-gray-400">案件予定日:</span> {selectedOrderForDetail.scheduledDate ? selectedOrderForDetail.scheduledDate.toLocaleDateString('ja-JP') : '未定'}</p>
+                  {selectedOrderForDetail.completedDate && (
+                    <p><span className="font-medium text-gray-400">完了日:</span> {selectedOrderForDetail.completedDate.toLocaleDateString('ja-JP')}</p>
+                  )}
                 </div>
               </div>
 
