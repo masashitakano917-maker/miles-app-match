@@ -3,6 +3,7 @@ import { User, Professional, Order, Service, Label } from '../types';
 import { Users, ClipboardList, Tags, Settings, LogOut, Plus, Edit, Trash2, X, Eye, Upload } from 'lucide-react';
 import { BusinessDayService } from '../services/BusinessDayService';
 import { NotificationService } from '../services/NotificationService';
+import { DataService } from '../services/DataService';
 
 interface AdminDashboardProps {
   user: User;
@@ -47,42 +48,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   });
 
   // Mock data
-  const [mockProfessionals, setMockProfessionals] = useState<Professional[]>([
-    {
-      id: 'pro-1',
-      name: '佐藤花子',
-      email: 'sato@example.com',
-      role: 'professional',
-      phone: '090-1234-5678',
-      address: {
-        postalCode: '100-0001',
-        prefecture: '東京都',
-        city: '千代田区',
-        detail: '丸の内1-1-1'
-      },
-      labels: [{ id: 'l1', name: '不動産撮影', category: '写真撮影' }],
-      isActive: true,
-      completedJobs: 15,
-      rating: 4.8
-    },
-    {
-      id: 'pro-2',
-      name: '田中一郎',
-      email: 'tanaka@example.com',
-      role: 'professional',
-      phone: '090-9876-5432',
-      address: {
-        postalCode: '150-0001',
-        prefecture: '東京都',
-        city: '渋谷区',
-        detail: '神宮前2-2-2'
-      },
-      labels: [{ id: 'l4', name: '1LDK', category: 'お掃除' }],
-      isActive: true,
-      completedJobs: 23,
-      rating: 4.9
-    }
-  ]);
+  const [mockProfessionals, setMockProfessionals] = useState<Professional[]>(
+    DataService.loadProfessionals()
+  );
 
   const mockOrders: Order[] = [
     {
@@ -148,6 +116,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     };
 
     setMockProfessionals([...mockProfessionals, professional]);
+    
+    // データを永続化
+    DataService.saveProfessionals([...mockProfessionals, professional]);
     resetNewProfessionalForm();
     setShowAddProfessionalModal(false);
   };
@@ -204,6 +175,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     };
 
     setMockProfessionals(mockProfessionals.map(p => 
+      p.id === editingProfessional.id ? updatedProfessional : p
+    ));
+    
+    // データを永続化
+    DataService.saveProfessionals(mockProfessionals.map(p => 
       p.id === editingProfessional.id ? updatedProfessional : p
     ));
     
@@ -264,6 +240,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const handleDeleteProfessional = (id: string) => {
     if (confirm('このプロフェッショナルを削除しますか？')) {
       setMockProfessionals(mockProfessionals.filter(p => p.id !== id));
+      
+      // データを永続化
+      DataService.saveProfessionals(mockProfessionals.filter(p => p.id !== id));
     }
   };
 
