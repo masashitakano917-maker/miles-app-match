@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Professional, Order, Service, Label } from '../types';
-import { Users, ClipboardList, Tags, Settings, LogOut, Plus, Edit, Trash2, X, Eye, Upload } from 'lucide-react';
+import { Users, Calendar, Settings, LogOut, Plus, Edit, Trash2, Eye, X, ChevronDown, CheckCircle } from 'lucide-react';
 import { BusinessDayService } from '../services/BusinessDayService';
 import { NotificationService } from '../services/NotificationService';
 import { DataService } from '../services/DataService';
@@ -1175,10 +1175,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   </p>
                   <p><span className="font-medium">作成日:</span> {selectedOrder.createdAt.toLocaleDateString('ja-JP')}</p>
                   <p><span className="font-medium">更新日:</span> {selectedOrder.updatedAt.toLocaleDateString('ja-JP')}</p>
-                  <p><span className="font-medium text-gray-400">案件予定日:</span> {selectedOrderForDetail.scheduledDate ? selectedOrderForDetail.scheduledDate.toLocaleDateString('ja-JP') : '未定'}</p>
-                  {selectedOrderForDetail.completedDate && (
-                    <p><span className="font-medium text-gray-400">完了日:</span> {selectedOrderForDetail.completedDate.toLocaleDateString('ja-JP')}</p>
-                  )}
                 </div>
               </div>
 
