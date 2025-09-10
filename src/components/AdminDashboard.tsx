@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { User, Professional, Order, Service, Label } from '../types';
 import { Users, ClipboardList, Tags, Settings, LogOut, Plus, Edit, Trash2, X, Eye, Upload } from 'lucide-react';
+import { BusinessDayService } from '../services/BusinessDayService';
+import { NotificationService } from '../services/NotificationService';
 
 interface AdminDashboardProps {
   user: User;
@@ -17,6 +19,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showOrderDetailModal, setShowOrderDetailModal] = useState(false);
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [showCancelOrderModal, setShowCancelOrderModal] = useState(false);
+  const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null);
+  const [cancellationInfo, setCancellationInfo] = useState<{
+    fee: number;
+    feePercentage: number;
+    businessHours: number;
+    reason: string;
+  } | null>(null);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
   
   const [newProfessional, setNewProfessional] = useState({
@@ -78,8 +88,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     {
       id: 'order-1',
       customerId: 'customer-1',
-      serviceId: 'service-1',
-      planId: 'plan-1',
+      serviceId: 'photo-service',
+      planId: 'real-estate',
       status: 'pending',
       customerName: '山田太郎',
       customerPhone: '090-1111-2222',
@@ -91,6 +101,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         detail: '丸の内1-1-1'
       },
       specialNotes: 'エレベーターなし',
+      scheduledDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       createdAt: new Date(),
       updatedAt: new Date()
     }
@@ -211,6 +222,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     setShowOrderDetailModal(true);
   };
 
+  const handleShowCancelOrder = (order: Order) => {
+    setSelectedOrderForCancel(order);
+    
+    // キャンセル料金を計算
+    const scheduledDate = order.scheduledDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const planPrice = getPlanPrice(order.planId);
+    const cancellationInfo = BusinessDayService.calculateCancellationFee(
+      new Date(),
+      scheduledDate,
+      planPrice
+    );
+    
+    setCancellationInfo(cancellationInfo);
+    setShowCancelOrderModal(true);
+  };
+
+  const handleCancelOrder = async () => {
+    if (!selectedOrderForCancel || !cancellationInfo) return;
+
+    try {
+      // キャンセル通知を送信
+      await NotificationService.sendCancellationNotification(
+        selectedOrderForCancel,
+        cancellationInfo.fee,
+        cancellationInfo.reason,
+        'admin'
+      );
+
+      alert(`注文をキャンセルしました。${cancellationInfo.fee > 0 ? `キャンセル料金: ¥${cancellationInfo.fee.toLocaleString()}` : 'キャンセル料金は発生しません。'}`);
+      
+      setShowCancelOrderModal(false);
+      setSelectedOrderForCancel(null);
+      setCancellationInfo(null);
+    } catch (error) {
+      console.error('キャンセル処理エラー:', error);
+      alert('キャンセル処理中にエラーが発生しました。');
+    }
+  };
+
   const handleDeleteProfessional = (id: string) => {
     if (confirm('このプロフェッショナルを削除しますか？')) {
       setMockProfessionals(mockProfessionals.filter(p => p.id !== id));
@@ -304,6 +354,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       }
     };
     return serviceNames[serviceId]?.[planId] || 'サービス';
+  };
+
+  const getPlanPrice = (planId: string) => {
+    const prices: { [key: string]: number } = {
+      'real-estate': 15000,
+      'portrait': 12000,
+      'food': 18000,
+      '1ldk': 8000,
+      '2ldk': 12000,
+      '3ldk': 16000,
+      'translation': 5000,
+      'interpretation': 8000,
+      'companion': 15000
+    };
+    return prices[planId] || 0;
   };
 
   const getStatusBadge = (status: Order['status']) => {
@@ -555,13 +620,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                           {order.createdAt.toLocaleDateString('ja-JP')}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button 
-                            onClick={() => handleShowOrderDetail(order)}
-                            className="text-blue-400 hover:text-blue-300"
-                            title="詳細表示"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => handleShowOrderDetail(order)}
+                              className="text-blue-400 hover:text-blue-300"
+                              title="詳細表示"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {(order.status === 'pending' || order.status === 'matched') && (
+                              <button 
+                                onClick={() => handleShowCancelOrder(order)}
+                                className="text-red-400 hover:text-red-300"
+                                title="キャンセル"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1163,6 +1239,65 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
               >
                 閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Order Modal */}
+      {showCancelOrderModal && selectedOrderForCancel && cancellationInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">注文キャンセル確認</h3>
+              <button
+                onClick={() => setShowCancelOrderModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-600 mb-4">
+                以下の注文をキャンセルしますか？
+              </p>
+              <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                <p className="font-medium">{getServiceName(selectedOrderForCancel.serviceId, selectedOrderForCancel.planId)}</p>
+                <p className="text-sm text-gray-600">注文ID: {selectedOrderForCancel.id}</p>
+                <p className="text-sm text-gray-600">顧客: {selectedOrderForCancel.customerName}</p>
+              </div>
+              
+              <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                <h4 className="text-yellow-800 font-medium mb-2">キャンセル料金</h4>
+                <div className="space-y-1 text-sm">
+                  <p className="text-yellow-700">
+                    <span className="font-medium">料金:</span> ¥{cancellationInfo.fee.toLocaleString()} 
+                    ({cancellationInfo.feePercentage}%)
+                  </p>
+                  <p className="text-yellow-700">
+                    <span className="font-medium">営業時間:</span> {cancellationInfo.businessHours.toFixed(1)}時間
+                  </p>
+                  <p className="text-yellow-700">
+                    <span className="font-medium">理由:</span> {cancellationInfo.reason}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowCancelOrderModal(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                戻る
+              </button>
+              <button
+                onClick={handleCancelOrder}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                キャンセルする
               </button>
             </div>
           </div>

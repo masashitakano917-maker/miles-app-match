@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { User, Service, Plan, Order } from '../types';
-import { ShoppingCart, Clock, CheckCircle, XCircle, LogOut, ChevronRight, ArrowLeft } from 'lucide-react';
+import { ShoppingCart, Clock, CheckCircle, XCircle, LogOut, ChevronRight, ArrowLeft, Eye, X } from 'lucide-react';
 import { NotificationService } from '../services/NotificationService';
+import { BusinessDayService } from '../services/BusinessDayService';
 
 interface CustomerDashboardProps {
   user: User;
@@ -14,6 +15,16 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showOrderDetail, setShowOrderDetail] = useState(false);
+  const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
+  const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null);
+  const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null);
+  const [cancellationInfo, setCancellationInfo] = useState<{
+    fee: number;
+    feePercentage: number;
+    businessHours: number;
+    reason: string;
+  } | null>(null);
   const [orderData, setOrderData] = useState({
     customerName: '',
     phone: '',
@@ -123,6 +134,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
       },
       meetingPlace: orderData.meetingPlace,
       specialNotes: orderData.specialNotes,
+      scheduledDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 1週間後をデフォルト
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -148,6 +160,64 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
       specialNotes: ''
     });
     setActiveTab('orders');
+  };
+
+  const handleShowOrderDetail = (order: Order) => {
+    setSelectedOrderForDetail(order);
+    setShowOrderDetail(true);
+  };
+
+  const handleShowCancelConfirmation = (order: Order) => {
+    setSelectedOrderForCancel(order);
+    
+    // キャンセル料金を計算
+    const scheduledDate = order.scheduledDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const planPrice = getPlanPrice(order.planId);
+    const cancellationInfo = BusinessDayService.calculateCancellationFee(
+      new Date(),
+      scheduledDate,
+      planPrice
+    );
+    
+    setCancellationInfo(cancellationInfo);
+    setShowCancelConfirmation(true);
+  };
+
+  const handleCancelOrder = async () => {
+    if (!selectedOrderForCancel || !cancellationInfo) return;
+
+    try {
+      // 注文をキャンセル状態に更新
+      const updatedOrders = mockOrders.map(order => 
+        order.id === selectedOrderForCancel.id 
+          ? { 
+              ...order, 
+              status: 'cancelled' as const,
+              cancellationFee: cancellationInfo.fee,
+              cancellationReason: cancellationInfo.reason,
+              updatedAt: new Date()
+            }
+          : order
+      );
+      setMockOrders(updatedOrders);
+
+      // キャンセル通知を送信
+      await NotificationService.sendCancellationNotification(
+        selectedOrderForCancel,
+        cancellationInfo.fee,
+        cancellationInfo.reason,
+        'customer'
+      );
+
+      alert(`注文をキャンセルしました。${cancellationInfo.fee > 0 ? `キャンセル料金: ¥${cancellationInfo.fee.toLocaleString()}` : 'キャンセル料金は発生しません。'}`);
+      
+      setShowCancelConfirmation(false);
+      setSelectedOrderForCancel(null);
+      setCancellationInfo(null);
+    } catch (error) {
+      console.error('キャンセル処理エラー:', error);
+      alert('キャンセル処理中にエラーが発生しました。');
+    }
   };
 
   const handleEditOrder = () => {
@@ -197,6 +267,42 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
       cancelled: 'キャンセル'
     };
     return statusLabels[status];
+  };
+
+  const getPlanPrice = (planId: string) => {
+    const prices: { [key: string]: number } = {
+      'real-estate': 15000,
+      'portrait': 12000,
+      'food': 18000,
+      '1ldk': 8000,
+      '2ldk': 12000,
+      '3ldk': 16000,
+      'translation': 5000,
+      'interpretation': 8000,
+      'companion': 15000
+    };
+    return prices[planId] || 0;
+  };
+
+  const getServiceName = (serviceId: string, planId: string) => {
+    const serviceNames: { [key: string]: { [key: string]: string } } = {
+      'photo-service': {
+        'real-estate': '不動産撮影',
+        'portrait': 'ポートレート撮影',
+        'food': 'フード撮影'
+      },
+      'cleaning-service': {
+        '1ldk': '1LDK清掃',
+        '2ldk': '2LDK清掃',
+        '3ldk': '3LDK清掃'
+      },
+      'staff-service': {
+        'translation': '翻訳',
+        'interpretation': '通訳',
+        'companion': 'イベントコンパニオン'
+      }
+    };
+    return serviceNames[serviceId]?.[planId] || 'サービス';
   };
 
   return (
@@ -572,7 +678,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
                       <div className="flex items-center gap-3 mb-2">
                         {getStatusIcon(order.status)}
                         <h3 className="text-lg font-semibold text-white">
-                          依頼ID: {order.id}
+                          {getServiceName(order.serviceId, order.planId)}
                         </h3>
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                           order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
@@ -583,12 +689,31 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
                           {getStatusLabel(order.status)}
                         </span>
                       </div>
+                      <p className="text-sm text-gray-400 mb-1">依頼ID: {order.id}</p>
                       <p className="text-gray-400 mb-1">
                         {order.address.prefecture} {order.address.city} {order.address.detail}
                       </p>
                       <p className="text-sm text-gray-500">
                         注文日: {order.createdAt.toLocaleDateString('ja-JP')}
                       </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleShowOrderDetail(order)}
+                        className="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-gray-700 transition-colors"
+                        title="詳細表示"
+                      >
+                        <Eye className="w-5 h-5" />
+                      </button>
+                      {(order.status === 'pending' || order.status === 'matched') && (
+                        <button
+                          onClick={() => handleShowCancelConfirmation(order)}
+                          className="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-gray-700 transition-colors"
+                          title="キャンセル"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                   
@@ -618,7 +743,155 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
           </div>
         )}
       </div>
+
+      {/* Order Detail Modal */}
+      {showOrderDetail && selectedOrderForDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl max-w-2xl w-full p-6 border border-gray-700">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-white">依頼詳細</h3>
+              <button
+                onClick={() => setShowOrderDetail(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-4">依頼情報</h4>
+                <div className="space-y-2 text-gray-300">
+                  <p><span className="font-medium text-gray-400">依頼ID:</span> {selectedOrderForDetail.id}</p>
+                  <p><span className="font-medium text-gray-400">サービス:</span> {getServiceName(selectedOrderForDetail.serviceId, selectedOrderForDetail.planId)}</p>
+                  <p><span className="font-medium text-gray-400">料金:</span> ¥{getPlanPrice(selectedOrderForDetail.planId).toLocaleString()}</p>
+                  <p><span className="font-medium text-gray-400">ステータス:</span> 
+                    <span className="ml-2">
+                      {getStatusBadge(selectedOrderForDetail.status)}
+                    </span>
+                  </p>
+                  <p><span className="font-medium text-gray-400">注文日:</span> {selectedOrderForDetail.createdAt.toLocaleDateString('ja-JP')}</p>
+                </div>
+              </div>
     </div>
+  );
+};
+
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-4">作業場所</h4>
+                <div className="space-y-2 text-gray-300">
+                  <p>〒{selectedOrderForDetail.address.postalCode}</p>
+                  <p>{selectedOrderForDetail.address.prefecture} {selectedOrderForDetail.address.city}</p>
+            {selectedOrderForDetail.specialNotes && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-white mb-4">特記事項</h4>
+                <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedOrderForDetail.specialNotes}</p>
+              </div>
+            )}
+                  <p>{selectedOrderForDetail.address.detail}</p>
+            {selectedOrderForDetail.assignedProfessionalId && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-white mb-4">担当プロフェッショナル</h4>
+                <p className="text-gray-300">ID: {selectedOrderForDetail.assignedProfessionalId}</p>
+              </div>
+            )}
+                  {selectedOrderForDetail.meetingPlace && (
+            {selectedOrderForDetail.cancellationFee && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-white mb-4">キャンセル情報</h4>
+                <div className="space-y-2 text-gray-300">
+                  <p><span className="font-medium text-gray-400">キャンセル料金:</span> ¥{selectedOrderForDetail.cancellationFee.toLocaleString()}</p>
+                  <p><span className="font-medium text-gray-400">理由:</span> {selectedOrderForDetail.cancellationReason}</p>
+                </div>
+              </div>
+            )}
+            
+            <div className="flex justify-end mt-8">
+              <button
+                onClick={() => setShowOrderDetail(false)}
+                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+                    <p><span className="font-medium text-gray-400">集合場所:</span> {selectedOrderForDetail.meetingPlace}</p>
+      {/* Cancel Confirmation Modal */}
+      {showCancelConfirmation && selectedOrderForCancel && cancellationInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-white">キャンセル確認</h3>
+              <button
+                onClick={() => setShowCancelConfirmation(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-300 mb-4">
+                以下の依頼をキャンセルしますか？
+              </p>
+              <div className="bg-gray-700 p-4 rounded-lg mb-4">
+                <p className="text-white font-medium">{getServiceName(selectedOrderForCancel.serviceId, selectedOrderForCancel.planId)}</p>
+                <p className="text-gray-400 text-sm">依頼ID: {selectedOrderForCancel.id}</p>
+              </div>
+              
+              <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 p-4 rounded-lg">
+                <h4 className="text-yellow-300 font-medium mb-2">キャンセル料金</h4>
+                <div className="space-y-1 text-sm">
+                  <p className="text-yellow-200">
+                    <span className="font-medium">料金:</span> ¥{cancellationInfo.fee.toLocaleString()} 
+                    ({cancellationInfo.feePercentage}%)
+                  </p>
+                  <p className="text-yellow-200">
+                    <span className="font-medium">営業時間:</span> {cancellationInfo.businessHours.toFixed(1)}時間
+                  </p>
+                  <p className="text-yellow-200">
+                    <span className="font-medium">理由:</span> {cancellationInfo.reason}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setShowCancelConfirmation(false)}
+                className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
+              >
+                戻る
+              </button>
+              <button
+                onClick={handleCancelOrder}
+                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                キャンセルする
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+                  )}
+                </div>
+              </div>
+            </div>
+const getStatusBadge = (status: Order['status']) => {
+  const statusConfig = {
+    pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '受付中' },
+    matched: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'マッチ済' },
+    in_progress: { bg: 'bg-purple-100', text: 'text-purple-800', label: '進行中' },
+    completed: { bg: 'bg-green-100', text: 'text-green-800', label: '完了' },
+    cancelled: { bg: 'bg-red-100', text: 'text-red-800', label: 'キャンセル' }
+  };
+  const config = statusConfig[status];
+  return (
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+      {config.label}
+    </span>
   );
 };
 
