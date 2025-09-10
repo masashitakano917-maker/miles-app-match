@@ -23,13 +23,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showCancelOrderModal, setShowCancelOrderModal] = useState(false);
   const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null);
   const [cancellationInfo, setCancellationInfo] = useState<{
-  const [showStatusEditModal, setShowStatusEditModal] = useState(false);
-  const [selectedOrderForStatusEdit, setSelectedOrderForStatusEdit] = useState<Order | null>(null);
     fee: number;
     feePercentage: number;
     businessHours: number;
     reason: string;
-  } | null>(null);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
   
   const [newProfessional, setNewProfessional] = useState({
