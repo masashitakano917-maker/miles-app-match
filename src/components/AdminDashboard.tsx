@@ -23,6 +23,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showCancelOrderModal, setShowCancelOrderModal] = useState(false);
   const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null);
   const [cancellationInfo, setCancellationInfo] = useState<{
+  const [showStatusEditModal, setShowStatusEditModal] = useState(false);
+  const [selectedOrderForStatusEdit, setSelectedOrderForStatusEdit] = useState<Order | null>(null);
     fee: number;
     feePercentage: number;
     businessHours: number;
@@ -314,6 +316,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     };
     
     reader.readAsText(file);
+  };
+
+  const showStatusEdit = (order: Order) => {
+    setSelectedOrderForStatusEdit(order);
+    setShowStatusEditModal(true);
   };
 
   const getServiceName = (serviceId: string, planId: string) => {
