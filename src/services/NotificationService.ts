@@ -3,7 +3,7 @@ import { Order, Plan, Professional } from '../types';
 export class NotificationService {
   // 実際のメール送信設定
   private static emailConfig = {
-    apiKey: process.env.SENDGRID_API_KEY || 'demo-key',
+    apiKey: import.meta.env.VITE_SENDGRID_API_KEY || 'demo-key',
     fromEmail: 'noreply@thisismerci.com',
     adminEmail: 'of@thisismerci.com'
   };
