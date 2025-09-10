@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Professional, Order, Service, Label } from '../types';
-import { Users, ClipboardList, Tags, Settings, LogOut, Plus, Edit, Trash2, X, Eye } from 'lucide-react';
+import { Users, ClipboardList, Tags, Settings, LogOut, Plus, Edit, Trash2, X, Eye, Upload } from 'lucide-react';
 
 interface AdminDashboardProps {
   user: User;
@@ -10,13 +10,25 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('professionals');
   const [showAddProfessionalModal, setShowAddProfessionalModal] = useState(false);
+  const [showEditProfessionalModal, setShowEditProfessionalModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAddLabelModal, setShowAddLabelModal] = useState(false);
+  const [showCsvUploadModal, setShowCsvUploadModal] = useState(false);
+  const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
+  const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
+  
   const [newProfessional, setNewProfessional] = useState({
     name: '',
     email: '',
     phone: '',
+    password: '',
+    postalCode: '',
+    prefecture: '',
+    city: '',
+    detail: '',
     selectedLabels: [] as string[]
   });
+  
   const [newLabel, setNewLabel] = useState({
     name: '',
     category: '写真撮影'
@@ -30,6 +42,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       email: 'sato@example.com',
       role: 'professional',
       phone: '090-1234-5678',
+      address: {
+        postalCode: '100-0001',
+        prefecture: '東京都',
+        city: '千代田区',
+        detail: '丸の内1-1-1'
+      },
       labels: [{ id: 'l1', name: '不動産撮影', category: '写真撮影' }],
       isActive: true,
       completedJobs: 15,
@@ -41,6 +59,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       email: 'tanaka@example.com',
       role: 'professional',
       phone: '090-9876-5432',
+      address: {
+        postalCode: '150-0001',
+        prefecture: '東京都',
+        city: '渋谷区',
+        detail: '神宮前2-2-2'
+      },
       labels: [{ id: 'l4', name: '1LDK', category: 'お掃除' }],
       isActive: true,
       completedJobs: 23,
@@ -93,6 +117,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       email: newProfessional.email,
       role: 'professional',
       phone: newProfessional.phone,
+      address: {
+        postalCode: newProfessional.postalCode,
+        prefecture: newProfessional.prefecture,
+        city: newProfessional.city,
+        detail: newProfessional.detail
+      },
       labels: selectedLabelObjects,
       isActive: true,
       completedJobs: 0,
@@ -100,8 +130,79 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     };
 
     setMockProfessionals([...mockProfessionals, professional]);
-    setNewProfessional({ name: '', email: '', phone: '', selectedLabels: [] });
+    setNewProfessional({ 
+      name: '', 
+      email: '', 
+      phone: '', 
+      password: '',
+      postalCode: '',
+      prefecture: '',
+      city: '',
+      detail: '',
+      selectedLabels: [] 
+    });
     setShowAddProfessionalModal(false);
+  };
+
+  const handleEditProfessional = (professional: Professional) => {
+    setEditingProfessional(professional);
+    setNewProfessional({
+      name: professional.name,
+      email: professional.email,
+      phone: professional.phone || '',
+      password: '',
+      postalCode: professional.address?.postalCode || '',
+      prefecture: professional.address?.prefecture || '',
+      city: professional.address?.city || '',
+      detail: professional.address?.detail || '',
+      selectedLabels: professional.labels.map(l => l.id)
+    });
+    setShowEditProfessionalModal(true);
+  };
+
+  const handleUpdateProfessional = () => {
+    if (!editingProfessional) return;
+
+    const selectedLabelObjects = mockLabels.filter(label => 
+      newProfessional.selectedLabels.includes(label.id)
+    );
+
+    const updatedProfessional: Professional = {
+      ...editingProfessional,
+      name: newProfessional.name,
+      email: newProfessional.email,
+      phone: newProfessional.phone,
+      address: {
+        postalCode: newProfessional.postalCode,
+        prefecture: newProfessional.prefecture,
+        city: newProfessional.city,
+        detail: newProfessional.detail
+      },
+      labels: selectedLabelObjects
+    };
+
+    setMockProfessionals(mockProfessionals.map(p => 
+      p.id === editingProfessional.id ? updatedProfessional : p
+    ));
+    
+    setNewProfessional({ 
+      name: '', 
+      email: '', 
+      phone: '', 
+      password: '',
+      postalCode: '',
+      prefecture: '',
+      city: '',
+      detail: '',
+      selectedLabels: [] 
+    });
+    setEditingProfessional(null);
+    setShowEditProfessionalModal(false);
+  };
+
+  const handleShowDetail = (professional: Professional) => {
+    setSelectedProfessional(professional);
+    setShowDetailModal(true);
   };
 
   const handleDeleteProfessional = (id: string) => {
@@ -126,6 +227,56 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     if (confirm('このラベルを削除しますか？')) {
       setMockLabels(mockLabels.filter(l => l.id !== id));
     }
+  };
+
+  const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const csv = e.target?.result as string;
+      const lines = csv.split('\n');
+      const headers = lines[0].split(',');
+      
+      const newProfessionals: Professional[] = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',');
+        if (values.length < headers.length) continue;
+        
+        const labelNames = values[8]?.split(';') || [];
+        const professionalLabels = mockLabels.filter(label => 
+          labelNames.includes(label.name)
+        );
+        
+        const professional: Professional = {
+          id: `pro-csv-${Date.now()}-${i}`,
+          name: values[0],
+          email: values[1],
+          role: 'professional',
+          phone: values[2],
+          address: {
+            postalCode: values[4],
+            prefecture: values[5],
+            city: values[6],
+            detail: values[7]
+          },
+          labels: professionalLabels,
+          isActive: true,
+          completedJobs: 0,
+          rating: 5.0
+        };
+        
+        newProfessionals.push(professional);
+      }
+      
+      setMockProfessionals([...mockProfessionals, ...newProfessionals]);
+      setShowCsvUploadModal(false);
+      alert(`${newProfessionals.length}件のプロフェッショナルを登録しました。`);
+    };
+    
+    reader.readAsText(file);
   };
 
   const getStatusBadge = (status: Order['status']) => {
@@ -196,13 +347,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold text-white">プロフェッショナル一覧</h2>
-              <button 
-                onClick={() => setShowAddProfessionalModal(true)}
-                className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-2 rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                新規登録
-              </button>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowCsvUploadModal(true)}
+                  className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  CSV一括登録
+                </button>
+                <button 
+                  onClick={() => setShowAddProfessionalModal(true)}
+                  className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-2 rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  新規登録
+                </button>
+              </div>
             </div>
 
             <div className="bg-gray-800 rounded-lg shadow overflow-hidden">
@@ -268,12 +428,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">
-                            <button className="text-orange-400 hover:text-orange-300">
+                            <button 
+                              onClick={() => handleShowDetail(professional)}
+                              className="text-blue-400 hover:text-blue-300"
+                              title="詳細表示"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleEditProfessional(professional)}
+                              className="text-orange-400 hover:text-orange-300"
+                              title="編集"
+                            >
                               <Edit className="w-4 h-4" />
                             </button>
                             <button 
                               onClick={() => handleDeleteProfessional(professional.id)}
                               className="text-red-400 hover:text-red-300"
+                              title="削除"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -401,7 +573,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       {/* Add Professional Modal */}
       {showAddProfessionalModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">新規プロフェッショナル登録</h3>
               <button
@@ -412,7 +584,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               </button>
             </div>
             
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">名前</label>
                 <input
@@ -442,34 +614,85 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">スキル</label>
-                <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {mockLabels.map((label) => (
-                    <label key={label.id} className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={newProfessional.selectedLabels.includes(label.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setNewProfessional({
-                              ...newProfessional,
-                              selectedLabels: [...newProfessional.selectedLabels, label.id]
-                            });
-                          } else {
-                            setNewProfessional({
-                              ...newProfessional,
-                              selectedLabels: newProfessional.selectedLabels.filter(id => id !== label.id)
-                            });
-                          }
-                        }}
-                        className="mr-2"
-                      />
-                      <span className="text-sm">{label.name} ({label.category})</span>
-                    </label>
-                  ))}
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">パスワード</label>
+                <input
+                  type="password"
+                  value={newProfessional.password}
+                  onChange={(e) => setNewProfessional({...newProfessional, password: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">郵便番号</label>
+                <input
+                  type="text"
+                  placeholder="000-0000"
+                  value={newProfessional.postalCode}
+                  onChange={(e) => setNewProfessional({...newProfessional, postalCode: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">都道府県</label>
+                <input
+                  type="text"
+                  value={newProfessional.prefecture}
+                  onChange={(e) => setNewProfessional({...newProfessional, prefecture: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">市区町村</label>
+                <input
+                  type="text"
+                  value={newProfessional.city}
+                  onChange={(e) => setNewProfessional({...newProfessional, city: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">それ以降の住所</label>
+                <input
+                  type="text"
+                  value={newProfessional.detail}
+                  onChange={(e) => setNewProfessional({...newProfessional, detail: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+            </div>
+            
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">スキル</label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {mockLabels.map((label) => (
+                  <label key={label.id} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={newProfessional.selectedLabels.includes(label.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewProfessional({
+                            ...newProfessional,
+                            selectedLabels: [...newProfessional.selectedLabels, label.id]
+                          });
+                        } else {
+                          setNewProfessional({
+                            ...newProfessional,
+                            selectedLabels: newProfessional.selectedLabels.filter(id => id !== label.id)
+                          });
+                        }
+                      }}
+                      className="mr-2"
+                    />
+                    <span className="text-sm">{label.name} ({label.category})</span>
+                  </label>
+                ))}
               </div>
             </div>
             
@@ -485,6 +708,274 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
               >
                 登録
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Professional Modal */}
+      {showEditProfessionalModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">プロフェッショナル編集</h3>
+              <button
+                onClick={() => setShowEditProfessionalModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">名前</label>
+                <input
+                  type="text"
+                  value={newProfessional.name}
+                  onChange={(e) => setNewProfessional({...newProfessional, name: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">メール</label>
+                <input
+                  type="email"
+                  value={newProfessional.email}
+                  onChange={(e) => setNewProfessional({...newProfessional, email: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
+                <input
+                  type="tel"
+                  value={newProfessional.phone}
+                  onChange={(e) => setNewProfessional({...newProfessional, phone: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">新しいパスワード（変更する場合）</label>
+                <input
+                  type="password"
+                  value={newProfessional.password}
+                  onChange={(e) => setNewProfessional({...newProfessional, password: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">郵便番号</label>
+                <input
+                  type="text"
+                  placeholder="000-0000"
+                  value={newProfessional.postalCode}
+                  onChange={(e) => setNewProfessional({...newProfessional, postalCode: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">都道府県</label>
+                <input
+                  type="text"
+                  value={newProfessional.prefecture}
+                  onChange={(e) => setNewProfessional({...newProfessional, prefecture: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">市区町村</label>
+                <input
+                  type="text"
+                  value={newProfessional.city}
+                  onChange={(e) => setNewProfessional({...newProfessional, city: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">それ以降の住所</label>
+                <input
+                  type="text"
+                  value={newProfessional.detail}
+                  onChange={(e) => setNewProfessional({...newProfessional, detail: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+            </div>
+            
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">スキル</label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {mockLabels.map((label) => (
+                  <label key={label.id} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={newProfessional.selectedLabels.includes(label.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewProfessional({
+                            ...newProfessional,
+                            selectedLabels: [...newProfessional.selectedLabels, label.id]
+                          });
+                        } else {
+                          setNewProfessional({
+                            ...newProfessional,
+                            selectedLabels: newProfessional.selectedLabels.filter(id => id !== label.id)
+                          });
+                        }
+                      }}
+                      className="mr-2"
+                    />
+                    <span className="text-sm">{label.name} ({label.category})</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setShowEditProfessionalModal(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleUpdateProfessional}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+              >
+                更新
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {showDetailModal && selectedProfessional && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">プロフェッショナル詳細</h3>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">基本情報</h4>
+                <div className="space-y-2 text-sm">
+                  <p><span className="font-medium">名前:</span> {selectedProfessional.name}</p>
+                  <p><span className="font-medium">メール:</span> {selectedProfessional.email}</p>
+                  <p><span className="font-medium">電話:</span> {selectedProfessional.phone}</p>
+                  <p><span className="font-medium">完了案件:</span> {selectedProfessional.completedJobs}件</p>
+                  <p><span className="font-medium">評価:</span> ⭐ {selectedProfessional.rating}</p>
+                  <p><span className="font-medium">ステータス:</span> 
+                    <span className={`ml-1 px-2 py-1 rounded text-xs ${
+                      selectedProfessional.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {selectedProfessional.isActive ? 'アクティブ' : '非アクティブ'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">住所</h4>
+                <div className="space-y-2 text-sm">
+                  {selectedProfessional.address ? (
+                    <>
+                      <p>〒{selectedProfessional.address.postalCode}</p>
+                      <p>{selectedProfessional.address.prefecture} {selectedProfessional.address.city}</p>
+                      <p>{selectedProfessional.address.detail}</p>
+                    </>
+                  ) : (
+                    <p className="text-gray-500">住所が登録されていません</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <h4 className="font-medium text-gray-900 mb-3">スキル・資格</h4>
+              <div className="flex flex-wrap gap-2">
+                {selectedProfessional.labels.map((label) => (
+                  <span
+                    key={label.id}
+                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-800"
+                  >
+                    {label.name} ({label.category})
+                  </span>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSV Upload Modal */}
+      {showCsvUploadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">CSV一括登録</h3>
+              <button
+                onClick={() => setShowCsvUploadModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">
+                CSVファイルをアップロードしてプロフェッショナルを一括登録できます。
+              </p>
+              <div className="bg-gray-50 p-3 rounded text-xs">
+                <p className="font-medium mb-1">CSV形式:</p>
+                <p>name,email,phone,password,postalCode,prefecture,city,detail,labels</p>
+                <p className="mt-1 text-gray-500">※labelsは「;」区切りで複数指定可能</p>
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                CSVファイル選択
+              </label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleCsvUpload}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+            
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowCsvUploadModal(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                キャンセル
               </button>
             </div>
           </div>
