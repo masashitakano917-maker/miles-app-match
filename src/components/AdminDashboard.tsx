@@ -14,7 +14,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAddLabelModal, setShowAddLabelModal] = useState(false);
   const [showCsvUploadModal, setShowCsvUploadModal] = useState(false);
+  const [showOrderDetailModal, setShowOrderDetailModal] = useState(false);
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
   
   const [newProfessional, setNewProfessional] = useState({
@@ -107,6 +109,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   ]);
 
   const handleAddProfessional = () => {
+    if (!newProfessional.name || !newProfessional.email || !newProfessional.password) {
+      alert('名前、メール、パスワードは必須項目です。');
+      return;
+    }
+
     const selectedLabelObjects = mockLabels.filter(label => 
       newProfessional.selectedLabels.includes(label.id)
     );
@@ -130,6 +137,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     };
 
     setMockProfessionals([...mockProfessionals, professional]);
+    resetNewProfessionalForm();
+    setShowAddProfessionalModal(false);
+  };
+
+  const resetNewProfessionalForm = () => {
     setNewProfessional({ 
       name: '', 
       email: '', 
@@ -141,7 +153,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       detail: '',
       selectedLabels: [] 
     });
-    setShowAddProfessionalModal(false);
   };
 
   const handleEditProfessional = (professional: Professional) => {
@@ -185,17 +196,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       p.id === editingProfessional.id ? updatedProfessional : p
     ));
     
-    setNewProfessional({ 
-      name: '', 
-      email: '', 
-      phone: '', 
-      password: '',
-      postalCode: '',
-      prefecture: '',
-      city: '',
-      detail: '',
-      selectedLabels: [] 
-    });
+    resetNewProfessionalForm();
     setEditingProfessional(null);
     setShowEditProfessionalModal(false);
   };
@@ -203,6 +204,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const handleShowDetail = (professional: Professional) => {
     setSelectedProfessional(professional);
     setShowDetailModal(true);
+  };
+
+  const handleShowOrderDetail = (order: Order) => {
+    setSelectedOrder(order);
+    setShowOrderDetailModal(true);
   };
 
   const handleDeleteProfessional = (id: string) => {
@@ -277,6 +283,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     };
     
     reader.readAsText(file);
+  };
+
+  const getServiceName = (serviceId: string, planId: string) => {
+    const serviceNames: { [key: string]: { [key: string]: string } } = {
+      'photo-service': {
+        'real-estate': '不動産撮影',
+        'portrait': 'ポートレート撮影',
+        'food': 'フード撮影'
+      },
+      'cleaning-service': {
+        '1ldk': '1LDK清掃',
+        '2ldk': '2LDK清掃',
+        '3ldk': '3LDK清掃'
+      },
+      'staff-service': {
+        'translation': '翻訳',
+        'interpretation': '通訳',
+        'companion': 'イベントコンパニオン'
+      }
+    };
+    return serviceNames[serviceId]?.[planId] || 'サービス';
   };
 
   const getStatusBadge = (status: Order['status']) => {
@@ -356,7 +383,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   CSV一括登録
                 </button>
                 <button 
-                  onClick={() => setShowAddProfessionalModal(true)}
+                  onClick={() => {
+                    resetNewProfessionalForm();
+                    setShowAddProfessionalModal(true);
+                  }}
                   className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-2 rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all flex items-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
@@ -474,6 +504,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                         依頼ID
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        サービス
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                         顧客情報
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
@@ -485,6 +518,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                         作成日
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        操作
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-gray-800 divide-y divide-gray-700">
@@ -492,6 +528,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                       <tr key={order.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
                           {order.id}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-white">
+                            {getServiceName(order.serviceId, order.planId)}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
@@ -512,6 +553,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                           {order.createdAt.toLocaleDateString('ja-JP')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <button 
+                            onClick={() => handleShowOrderDetail(order)}
+                            className="text-blue-400 hover:text-blue-300"
+                            title="詳細表示"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -621,6 +671,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   type="password"
                   value={newProfessional.password}
                   onChange={(e) => setNewProfessional({...newProfessional, password: e.target.value})}
+                  placeholder="パスワードを入力"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
@@ -879,6 +930,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <p><span className="font-medium">名前:</span> {selectedProfessional.name}</p>
                   <p><span className="font-medium">メール:</span> {selectedProfessional.email}</p>
                   <p><span className="font-medium">電話:</span> {selectedProfessional.phone}</p>
+                  <p><span className="font-medium">パスワード:</span> ••••••••</p>
                   <p><span className="font-medium">完了案件:</span> {selectedProfessional.completedJobs}件</p>
                   <p><span className="font-medium">評価:</span> ⭐ {selectedProfessional.rating}</p>
                   <p><span className="font-medium">ステータス:</span> 
@@ -1033,6 +1085,84 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
               >
                 追加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order Detail Modal */}
+      {showOrderDetailModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">依頼詳細</h3>
+              <button
+                onClick={() => setShowOrderDetailModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">依頼情報</h4>
+                <div className="space-y-2 text-sm">
+                  <p><span className="font-medium">依頼ID:</span> {selectedOrder.id}</p>
+                  <p><span className="font-medium">サービス:</span> {getServiceName(selectedOrder.serviceId, selectedOrder.planId)}</p>
+                  <p><span className="font-medium">ステータス:</span> 
+                    <span className="ml-2">
+                      {getStatusBadge(selectedOrder.status)}
+                    </span>
+                  </p>
+                  <p><span className="font-medium">作成日:</span> {selectedOrder.createdAt.toLocaleDateString('ja-JP')}</p>
+                  <p><span className="font-medium">更新日:</span> {selectedOrder.updatedAt.toLocaleDateString('ja-JP')}</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">顧客情報</h4>
+                <div className="space-y-2 text-sm">
+                  <p><span className="font-medium">お名前:</span> {selectedOrder.customerName}</p>
+                  <p><span className="font-medium">電話番号:</span> {selectedOrder.customerPhone}</p>
+                  <p><span className="font-medium">メール:</span> {selectedOrder.customerEmail}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <h4 className="font-medium text-gray-900 mb-3">作業場所</h4>
+              <div className="space-y-2 text-sm">
+                <p>〒{selectedOrder.address.postalCode}</p>
+                <p>{selectedOrder.address.prefecture} {selectedOrder.address.city}</p>
+                <p>{selectedOrder.address.detail}</p>
+                {selectedOrder.meetingPlace && (
+                  <p><span className="font-medium">集合場所:</span> {selectedOrder.meetingPlace}</p>
+                )}
+              </div>
+            </div>
+
+            {selectedOrder.specialNotes && (
+              <div className="mt-6">
+                <h4 className="font-medium text-gray-900 mb-3">特記事項</h4>
+                <p className="text-sm bg-gray-50 p-3 rounded-lg">{selectedOrder.specialNotes}</p>
+              </div>
+            )}
+
+            {selectedOrder.assignedProfessionalId && (
+              <div className="mt-6">
+                <h4 className="font-medium text-gray-900 mb-3">担当プロフェッショナル</h4>
+                <p className="text-sm">ID: {selectedOrder.assignedProfessionalId}</p>
+              </div>
+            )}
+            
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setShowOrderDetailModal(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              >
+                閉じる
               </button>
             </div>
           </div>
