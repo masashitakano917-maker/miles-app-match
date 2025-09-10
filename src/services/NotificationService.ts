@@ -44,6 +44,82 @@ export class NotificationService {
     console.log('📧 すべての通知メールを送信完了');
   }
 
+  // プロフェッショナル登録・更新通知
+  static async sendProfessionalRegistrationNotification(
+    professional: Professional, 
+    isNew: boolean = true
+  ): Promise<void> {
+    console.log(`📧 プロフェッショナル${isNew ? '登録' : '更新'}通知を送信中...`);
+    
+    // プロフェッショナル本人への通知
+    await this.sendEmail(
+      professional.email,
+      `アカウント${isNew ? '登録' : '更新'}完了のお知らせ`,
+      this.generateProfessionalAccountNotificationEmail(professional, isNew)
+    );
+    console.log(`✅ プロフェッショナル (${professional.email}) に${isNew ? '登録' : '更新'}通知を送信完了`);
+    
+    // 管理者への通知
+    await this.sendEmail(
+      this.emailConfig.adminEmail,
+      `プロフェッショナル${isNew ? '新規登録' : '情報更新'}のお知らせ`,
+      this.generateAdminProfessionalNotificationEmail(professional, isNew)
+    );
+    console.log(`✅ 管理者にプロフェッショナル${isNew ? '登録' : '更新'}通知を送信完了`);
+  }
+
+  // カスタマー登録通知
+  static async sendCustomerRegistrationNotification(customer: any): Promise<void> {
+    console.log('📧 カスタマー登録通知を送信中...');
+    
+    // カスタマー本人への通知
+    await this.sendEmail(
+      customer.email,
+      'アカウント登録完了のお知らせ',
+      this.generateCustomerRegistrationEmail(customer)
+    );
+    console.log(`✅ カスタマー (${customer.email}) に登録通知を送信完了`);
+    
+    // 管理者への通知
+    await this.sendEmail(
+      this.emailConfig.adminEmail,
+      'カスタマー新規登録のお知らせ',
+      this.generateAdminCustomerRegistrationEmail(customer)
+    );
+    console.log('✅ 管理者にカスタマー登録通知を送信完了');
+  }
+
+  // リマインドメール送信
+  static async sendReminderNotification(
+    order: Order, 
+    professional: Professional
+  ): Promise<void> {
+    console.log('📧 リマインドメール送信中...');
+    
+    // カスタマーへのリマインド
+    await this.sendEmail(
+      order.customerEmail,
+      '明日の作業予定のリマインド',
+      this.generateReminderEmail(order, professional, 'customer')
+    );
+    
+    // プロフェッショナルへのリマインド
+    await this.sendEmail(
+      professional.email,
+      '明日の作業予定のリマインド',
+      this.generateReminderEmail(order, professional, 'professional')
+    );
+    
+    // 管理者へのリマインド
+    await this.sendEmail(
+      this.emailConfig.adminEmail,
+      '明日の作業予定のリマインド',
+      this.generateReminderEmail(order, professional, 'admin')
+    );
+    
+    console.log('📧 リマインドメール送信完了');
+  }
+
   // マッチング時の通知
   static async sendMatchNotification(order: Order, professional: Professional): Promise<void> {
     console.log('📧 マッチング通知を送信中...');
@@ -141,28 +217,25 @@ export class NotificationService {
   }
   // 該当するプロフェッショナルを検索（ラベルと住所で絞り込み）
   private static async findEligibleProfessionals(order: Order, plan: Plan): Promise<Professional[]> {
-    // 実際の実装では、データベースから該当するプロフェッショナルを検索
-    // 1. プランに必要なラベルを持つプロフェッショナルを検索
-    // 2. 住所から距離を計算して近い順にソート
-    // 3. アクティブなプロフェッショナルのみを返す
+    // DataServiceからプロフェッショナルデータを取得
+    const { DataService } = await import('./DataService');
+    const allProfessionals = DataService.loadProfessionals();
     
     console.log(`🔍 プラン「${plan.name}」に該当するプロフェッショナルを検索中...`);
     console.log(`📍 住所: ${order.address.prefecture} ${order.address.city} ${order.address.detail}`);
     
-    // モックデータとして返す
-    return [
-      {
-        id: 'pro-1',
-        name: '佐藤花子',
-        email: 'sato@example.com',
-        role: 'professional',
-        phone: '090-1234-5678',
-        labels: [{ id: 'l1', name: '不動産撮影', category: '写真撮影' }],
-        isActive: true,
-        completedJobs: 15,
-        rating: 4.8
-      }
-    ];
+    // アクティブなプロフェッショナルのみをフィルタリング
+    const activeProfessionals = allProfessionals.filter(pro => pro.isActive);
+    
+    // プランに対応するラベルを持つプロフェッショナルを検索
+    const eligibleProfessionals = activeProfessionals.filter(pro => {
+      return pro.labels && pro.labels.some((label: any) => 
+        label.name.includes(plan.name) || plan.name.includes(label.name)
+      );
+    });
+    
+    console.log(`✅ ${eligibleProfessionals.length}名の該当プロフェッショナルを発見`);
+    return eligibleProfessionals;
   }
 
   // 実際のメール送信
@@ -356,6 +429,90 @@ export class NotificationService {
         <li>理由: ${reason}</li>
       </ul>
       <p>キャンセル処理が完了しました。</p>
+    `;
+  }
+
+  // 新しいメールテンプレート
+  private static generateProfessionalAccountNotificationEmail(professional: Professional, isNew: boolean): string {
+    return `
+      <h2>アカウント${isNew ? '登録' : '更新'}完了</h2>
+      <p>${professional.name}様</p>
+      <p>アカウント${isNew ? '登録' : '更新'}が完了いたしました。</p>
+      <h3>登録情報</h3>
+      <ul>
+        <li>お名前: ${professional.name}</li>
+        <li>メールアドレス: ${professional.email}</li>
+        <li>電話番号: ${professional.phone}</li>
+        <li>スキル: ${professional.labels.map(l => l.name).join(', ')}</li>
+      </ul>
+      <p>プラットフォームでのご活躍をお待ちしております。</p>
+    `;
+  }
+
+  private static generateAdminProfessionalNotificationEmail(professional: Professional, isNew: boolean): string {
+    return `
+      <h2>プロフェッショナル${isNew ? '新規登録' : '情報更新'}</h2>
+      <h3>プロフェッショナル情報</h3>
+      <ul>
+        <li>ID: ${professional.id}</li>
+        <li>お名前: ${professional.name}</li>
+        <li>メールアドレス: ${professional.email}</li>
+        <li>電話番号: ${professional.phone}</li>
+        <li>スキル: ${professional.labels.map(l => l.name).join(', ')}</li>
+        <li>ステータス: ${professional.isActive ? 'アクティブ' : '非アクティブ'}</li>
+      </ul>
+      <p>${isNew ? '新しいプロフェッショナルが登録されました。' : 'プロフェッショナル情報が更新されました。'}</p>
+    `;
+  }
+
+  private static generateCustomerRegistrationEmail(customer: any): string {
+    return `
+      <h2>アカウント登録完了</h2>
+      <p>${customer.name}様</p>
+      <p>マッチングプラットフォームへのご登録ありがとうございます。</p>
+      <h3>登録情報</h3>
+      <ul>
+        <li>お名前: ${customer.name}</li>
+        <li>メールアドレス: ${customer.email}</li>
+        <li>電話番号: ${customer.phone || '未設定'}</li>
+      </ul>
+      <p>様々なサービスをご利用いただけます。</p>
+    `;
+  }
+
+  private static generateAdminCustomerRegistrationEmail(customer: any): string {
+    return `
+      <h2>カスタマー新規登録</h2>
+      <h3>カスタマー情報</h3>
+      <ul>
+        <li>ID: ${customer.id}</li>
+        <li>お名前: ${customer.name}</li>
+        <li>メールアドレス: ${customer.email}</li>
+        <li>電話番号: ${customer.phone || '未設定'}</li>
+      </ul>
+      <p>新しいカスタマーが登録されました。</p>
+    `;
+  }
+
+  private static generateReminderEmail(order: Order, professional: Professional, recipient: 'customer' | 'professional' | 'admin'): string {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    return `
+      <h2>明日の作業予定リマインド</h2>
+      <p>${recipient === 'customer' ? order.customerName + '様' : 
+          recipient === 'professional' ? professional.name + '様' : 
+          '管理者様'}</p>
+      <p>明日の作業予定をお知らせいたします。</p>
+      <h3>作業詳細</h3>
+      <ul>
+        <li>注文ID: ${order.id}</li>
+        <li>サービス: ${order.serviceId}</li>
+        <li>作業場所: ${order.address.prefecture} ${order.address.city} ${order.address.detail}</li>
+        <li>予定日時: ${order.scheduledDate?.toLocaleDateString('ja-JP')} ${order.scheduledDate?.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</li>
+      </ul>
+      ${recipient === 'customer' ? '<p>担当プロフェッショナルからご連絡いたします。</p>' : ''}
+      ${recipient === 'professional' ? '<p>お客様への事前連絡をお忘れなく。</p>' : ''}
     `;
   }
 }

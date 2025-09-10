@@ -88,6 +88,9 @@ export class DataService {
       
       localStorage.setItem(this.STORAGE_KEYS.ORDERS, JSON.stringify(serializedOrders));
       console.log('✅ 注文データを保存しました');
+      
+      // 保存後にイベントを発火（Admin画面更新用）
+      window.dispatchEvent(new CustomEvent('ordersUpdated', { detail: orders }));
     } catch (error) {
       console.error('❌ 注文データ保存エラー:', error);
     }
@@ -116,6 +119,31 @@ export class DataService {
       }
     } catch (error) {
       console.error('❌ 注文データ読み込みエラー:', error);
+    }
+    return [];
+  }
+
+  // カスタマーデータの保存
+  static saveCustomers(customers: any[]): void {
+    try {
+      localStorage.setItem(this.STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
+      console.log('✅ カスタマーデータを保存しました');
+    } catch (error) {
+      console.error('❌ カスタマーデータ保存エラー:', error);
+    }
+  }
+
+  // カスタマーデータの読み込み
+  static loadCustomers(): any[] {
+    try {
+      const data = localStorage.getItem(this.STORAGE_KEYS.CUSTOMERS);
+      if (data) {
+        const customers = JSON.parse(data);
+        console.log('✅ カスタマーデータを読み込みました:', customers.length, '件');
+        return customers;
+      }
+    } catch (error) {
+      console.error('❌ カスタマーデータ読み込みエラー:', error);
     }
     return [];
   }
