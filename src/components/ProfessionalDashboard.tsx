@@ -3,6 +3,7 @@ import type { User, Order, Professional } from '../types';
 import { Bell, CheckCircle, Clock, MapPin, LogOut, Phone, Mail, Eye, X, Edit, Save, EyeOff } from 'lucide-react';
 import { NotificationService } from '../services/NotificationService';
 import { DataService } from '../services/DataService';
+import { MatchingService } from '../services/MatchingService';
 
 interface ProfessionalDashboardProps {
   user: User;
@@ -57,8 +58,23 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
     }
   }, [user.id]);
 
-  // Mock pending requests (empty by default)
+  // Load pending requests from MatchingService
   const [mockRequests, setMockRequests] = useState<Order[]>([]);
+  
+  // Load professional's orders on mount and set up refresh
+  useEffect(() => {
+    const loadProfessionalOrders = () => {
+      const orders = MatchingService.getProfessionalOrders(user.id);
+      setMockRequests(orders);
+    };
+    
+    loadProfessionalOrders();
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(loadProfessionalOrders, 30000);
+    
+    return () => clearInterval(interval);
+  }, [user.id]);
 
   // Mock active jobs (empty by default)
   const [mockActiveJobs, setMockActiveJobs] = useState<Order[]>([]);
@@ -71,6 +87,9 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
     const updatedOrder = { ...order, status: 'in_progress' as const, assignedProfessionalId: user.id };
     setMockRequests(mockRequests.filter(r => r.id !== orderId));
     setMockActiveJobs([...mockActiveJobs, updatedOrder]);
+    
+    // Remove from professional's order list
+    MatchingService.removeOrderFromProfessional(user.id, orderId);
 
     // Send notifications
     await NotificationService.sendMatchNotification(updatedOrder, professionalData);
