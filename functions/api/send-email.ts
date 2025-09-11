@@ -1,9 +1,9 @@
 // Cloudflare Pages Functions: POST /api/send-email
 type Env = {
   SENDGRID_API_KEY: string;
-  FROM_EMAIL: string;         // 例: "no-reply@openframe.inc"
-  FROM_NAME: string;          // 例: "Miles"
-  DEFAULT_TO_EMAIL: string;   // 例: "of@thisismerci.com"
+  FROM_EMAIL: string;         // no-reply@openframe.inc
+  FROM_NAME: string;          // Miles
+  DEFAULT_TO_EMAIL: string;   // of@thisismerci.com
 };
 
 const cors = {

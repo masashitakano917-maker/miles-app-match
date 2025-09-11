@@ -2,11 +2,12 @@ import type { Order, Plan, Professional } from '../types';
 import { EmailService } from './EmailService';
 
 export class NotificationService {
-  // 実際のメール送信設定
+  // SendGrid設定（環境変数から取得）
   private static emailConfig = {
     apiKey: import.meta.env.VITE_SENDGRID_API_KEY || 'demo-key',
-    fromEmail: 'noreply@thisismerci.com',
-    adminEmail: 'of@thisismerci.com'
+    fromEmail: import.meta.env.VITE_FROM_EMAIL || 'no-reply@openframe.inc',
+    fromName: import.meta.env.VITE_FROM_NAME || 'Miles',
+    adminEmail: import.meta.env.VITE_DEFAULT_TO_EMAIL || 'of@thisismerci.com'
   };
 
   // 注文時の通知

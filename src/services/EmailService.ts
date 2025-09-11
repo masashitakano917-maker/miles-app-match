@@ -21,6 +21,16 @@ export type SendEmailPayload = {
 export class EmailService {
   private static readonly ENDPOINT = "/api/send-email";
 
+  // 環境変数の確認
+  private static checkConfig(): boolean {
+    const apiKey = import.meta.env.VITE_SENDGRID_API_KEY;
+    if (!apiKey || apiKey === 'demo-key') {
+      console.warn('⚠️ SENDGRID_API_KEY が設定されていません。メールはコンソールに表示されます。');
+      return false;
+    }
+    return true;
+  }
+
   /** 単発送信（従来APIと同じ形） */
   static async sendEmail(
     to: string,
