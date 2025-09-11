@@ -11,23 +11,28 @@ import {
   Eye,
   X,
   Save,
-  X,
-  User as UserIcon
-  ClipboardList,
-  Calendar,
+  UserCheck,
+  Clock,
   CheckCircle,
-  Search,
-  Filter,
-  BarChart3,
-  ChevronDown,
-  ArrowUpDown,
+  XCircle,
   Mail,
   Phone,
   MapPin,
-  Tag
-} from "lucide-react";
+  Calendar,
+  AlertTriangle,
+  Search,
+  Filter,
+  Download,
+  Upload,
+  BarChart3,
+  TrendingUp,
+  DollarSign,
+  Star,
+  UserPlus
+} from 'lucide-react';
 import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';
+import { LocationService } from '../services/LocationService';
 import { BusinessDayService } from '../services/BusinessDayService';
 
 interface AdminDashboardProps {
@@ -36,66 +41,28 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
-  const [activeTab, setActiveTab] = useState('orders');
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'professional' | 'label' | 'order' | null>(null);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  // Data states
   const [professionals, setProfessionals] = useState<Professional[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [showOrderDetail, setShowOrderDetail] = useState(false);
-  const [showProfessionalDetail, setShowProfessionalDetail] = useState(false);
-  const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
-  const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null);
-  const [selectedProfessionalForDetail, setSelectedProfessionalForDetail] = useState<Professional | null>(null);
-  const [newLabelName, setNewLabelName] = useState('');
-  const [newLabelCategory, setNewLabelCategory] = useState('');
-  const [businessDays, setBusinessDays] = useState([1, 2, 3, 4, 5]); // 月-金
-  const [holidays, setHolidays] = useState<string[]>([]);
-  const [newHoliday, setNewHoliday] = useState('');
-  // ラベル管理で使用されている state（未定義だった）
-const [labels, setLabels] = useState<Label[]>([]);
-  const [salesPeriod, setSalesPeriod] = useState<'week' | 'month'>('week');
-  const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null);
-  const [cancellationInfo, setCancellationInfo] = useState<{
-    fee: number;
-    feePercentage: number;
-    businessHours: number;
-    reason: string;
-  } | null>(null);
-  const [selectedOrderForStatusEdit, setSelectedOrderForStatusEdit] = useState<Order | null>(null);
-  const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
-  const [showStatusEditModal, setShowStatusEditModal] = useState(false);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [labels, setLabels] = useState<Label[]>([]);
 
-  // Search states
-  const [orderSearchFilters, setOrderSearchFilters] = useState({
-    customer: '',
-    service: '',
-    status: '',
-    dateType: 'created' as 'created' | 'scheduled' | 'completed',
-    dateFrom: '',
-    dateTo: ''
-  });
-
-  const [professionalSearchFilters, setProfessionalSearchFilters] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    label: ''
-  });
-
-  const [customerSearchFilters, setCustomerSearchFilters] = useState({
-    name: '',
-    email: '',
-    phone: ''
-  });
-
-  // 統計の並べ替え
-  const [statsSortBy, setStatsSortBy] = useState<'name' | 'completedJobs' | 'rating'>('completedJobs');
-  const [statsSortOrder, setStatsSortOrder] = useState<'asc' | 'desc'>('desc');
-
-  const [newProfessional, setNewProfessional] = useState({
+  // Form states
+  const [professionalForm, setProfessionalForm] = useState({
     name: '',
     email: '',
     phone: '',
     password: '',
+    bio: '',
+    equipment: '',
+    experience: '',
+    isActive: true,
     labels: [] as Label[],
     address: {
       postalCode: '',
@@ -105,298 +72,46 @@ const [labels, setLabels] = useState<Label[]>([]);
     }
   });
 
-  const [availableLabels] = useState<Label[]>([
-    { id: 'l1', name: '不動産撮影', category: '写真撮影' },
-    { id: 'l2', name: 'ポートレート撮影', category: '写真撮影' },
-    { id: 'l3', name: 'フード撮影', category: '写真撮影' },
-    { id: 'l4', name: '1LDK', category: 'お掃除' },
-    { id: 'l5', name: '2LDK', category: 'お掃除' },
-    { id: 'l6', name: '3LDK', category: 'お掃除' },
-    { id: 'l7', name: '翻訳', category: 'スタッフ派遣' },
-    { id: 'l8', name: '通訳', category: 'スタッフ派遣' },
-    { id: 'l9', name: 'イベントコンパニオン', category: 'スタッフ派遣' }
-  ]);
+  const [labelForm, setLabelForm] = useState({
+    name: '',
+    category: ''
+  });
 
+  // Load data on component mount
   useEffect(() => {
     loadData();
     
-    // データ更新イベントリスナー
-    const handleOrdersUpdate = (event: CustomEvent) => {
+    // Listen for order updates
+    const handleOrdersUpdated = (event: CustomEvent) => {
       setOrders(event.detail);
     };
     
-    window.addEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
+    window.addEventListener('ordersUpdated', handleOrdersUpdated as EventListener);
     
     return () => {
-      window.removeEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
+      window.removeEventListener('ordersUpdated', handleOrdersUpdated as EventListener);
     };
   }, []);
 
   const loadData = () => {
-    const loadedOrders = DataService.loadOrders();
-    const loadedProfessionals = DataService.loadProfessionals();
-    const loadedCustomers = DataService.loadCustomers();
-    
-    setOrders(loadedOrders);
-    setProfessionals(loadedProfessionals);
-    setCustomers(loadedCustomers);
+    setProfessionals(DataService.loadProfessionals());
+    setOrders(DataService.loadOrders());
+    setLabels(DataService.loadLabels());
   };
 
-  // Filter functions
-  const filteredOrders = orders.filter(order => {
-    const matchesCustomer = !orderSearchFilters.customer || 
-      order.customerName.toLowerCase().includes(orderSearchFilters.customer.toLowerCase()) ||
-      order.customerEmail.toLowerCase().includes(orderSearchFilters.customer.toLowerCase());
-    
-    const matchesService = !orderSearchFilters.service || 
-      getServiceName(order.serviceId, order.planId).toLowerCase().includes(orderSearchFilters.service.toLowerCase());
-    
-    const matchesStatus = !orderSearchFilters.status || order.status === orderSearchFilters.status;
-    
-    // 日付フィルタリング
-    let matchesDate = true;
-    if (orderSearchFilters.dateFrom || orderSearchFilters.dateTo) {
-      let targetDate: Date | undefined;
-      
-      switch (orderSearchFilters.dateType) {
-        case 'created':
-          targetDate = order.createdAt;
-          break;
-        case 'scheduled':
-          targetDate = order.scheduledDate;
-          break;
-        case 'completed':
-          targetDate = order.completedDate;
-          break;
-      }
-      
-      if (targetDate) {
-        const fromMatch = !orderSearchFilters.dateFrom || targetDate >= new Date(orderSearchFilters.dateFrom);
-        const toMatch = !orderSearchFilters.dateTo || targetDate <= new Date(orderSearchFilters.dateTo + 'T23:59:59');
-        matchesDate = fromMatch && toMatch;
-      } else {
-        matchesDate = false;
-      }
-    }
-    
-    return matchesCustomer && matchesService && matchesStatus && matchesDate;
-  });
-
-  const filteredProfessionals = professionals.filter(professional => {
-    const matchesName = !professionalSearchFilters.name || 
-      professional.name.toLowerCase().includes(professionalSearchFilters.name.toLowerCase());
-    
-    const matchesEmail = !professionalSearchFilters.email || 
-      professional.email.toLowerCase().includes(professionalSearchFilters.email.toLowerCase());
-    
-    const matchesPhone = !professionalSearchFilters.phone || 
-      (professional.phone && professional.phone.includes(professionalSearchFilters.phone));
-    
-    const matchesLabel = !professionalSearchFilters.label || 
-      professional.labels.some(label => label.name.toLowerCase().includes(professionalSearchFilters.label.toLowerCase()));
-    
-    return matchesName && matchesEmail && matchesPhone && matchesLabel;
-  });
-
-  const getFilteredCustomers = () => {
-    let filteredCustomers = customers;
-
-    if (customerSearchFilters.name) {
-      filteredCustomers = filteredCustomers.filter(customer =>
-        customer.name.toLowerCase().includes(customerSearchFilters.name.toLowerCase())
-      );
-    }
-
-    if (customerSearchFilters.email) {
-      filteredCustomers = filteredCustomers.filter(customer =>
-        customer.email.toLowerCase().includes(customerSearchFilters.email.toLowerCase())
-      );
-    }
-
-    if (customerSearchFilters.phone) {
-      filteredCustomers = filteredCustomers.filter(customer =>
-        customer.phone && customer.phone.includes(customerSearchFilters.phone)
-      );
-    }
-
-    return filteredCustomers;
-  };
-
-  // Statistics calculation
-  const getProfessionalStats = () => {
-    return professionals.map(professional => {
-      const professionalOrders = orders.filter(order => 
-        order.assignedProfessionalId === professional.id && order.status === 'completed'
-      );
-      
-      const serviceStats: { [key: string]: number } = {};
-      professionalOrders.forEach(order => {
-        const serviceName = getServiceName(order.serviceId, order.planId);
-        serviceStats[serviceName] = (serviceStats[serviceName] || 0) + 1;
-      });
-      
-      return {
-        professional,
-        totalJobs: professionalOrders.length,
-        serviceBreakdown: serviceStats
-      };
-    });
-  };
-
-  // Generate professional statistics
-  const professionalStats = professionals.map(professional => {
-    const professionalOrders = orders.filter(order => 
-      order.assignedProfessionalId === professional.id && order.status === 'completed'
-    );
-    
-    const serviceBreakdown = professionalOrders.reduce((acc, order) => {
-      const serviceName = getServiceName(order.serviceId, order.planId);
-      acc[serviceName] = (acc[serviceName] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    return {
-      professional,
-      completedJobs: professionalOrders.length,
-      serviceBreakdown,
-      rating: professional.rating || 0
-    };
-  }).sort((a, b) => {
-    let comparison = 0;
-    
-    switch (statsSortBy) {
-      case 'name':
-        comparison = a.professional.name.localeCompare(b.professional.name);
-        break;
-      case 'completedJobs':
-        comparison = a.completedJobs - b.completedJobs;
-        break;
-      case 'rating':
-        comparison = a.rating - b.rating;
-        break;
-    }
-    
-    return statsSortOrder === 'desc' ? -comparison : comparison;
-  });
-
-  const handleShowOrderDetail = (order: Order) => {
-    setSelectedOrderForDetail(order);
-    setShowOrderDetail(true);
-  };
-
-  const handleShowProfessionalDetail = (professional: Professional) => {
-    setSelectedProfessionalForDetail(professional);
-    setShowProfessionalDetail(true);
-  };
-
-  const handleShowCancelConfirmation = (order: Order) => {
-    setSelectedOrderForCancel(order);
-    
-    const scheduledDate = order.scheduledDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const planPrice = getPlanPrice(order.planId);
-    const cancellationInfo = BusinessDayService.calculateCancellationFee(
-      new Date(),
-      scheduledDate,
-      planPrice
-    );
-    
-    setCancellationInfo(cancellationInfo);
-    setShowCancelConfirmation(true);
-  };
-
-  const handleCancelOrder = async () => {
-    if (!selectedOrderForCancel || !cancellationInfo) return;
-
-    try {
-      const updatedOrders = orders.map(order => 
-        order.id === selectedOrderForCancel.id 
-          ? { 
-              ...order, 
-              status: 'cancelled' as const,
-              cancellationFee: cancellationInfo.fee,
-              cancellationReason: cancellationInfo.reason,
-              updatedAt: new Date()
-            }
-          : order
-      );
-      setOrders(updatedOrders);
-      DataService.saveOrders(updatedOrders);
-
-      await NotificationService.sendCancellationNotification(
-        selectedOrderForCancel,
-        cancellationInfo.fee,
-        cancellationInfo.reason,
-        'admin'
-      );
-
-      alert(`注文をキャンセルしました。${cancellationInfo.fee > 0 ? `キャンセル料金: ¥${cancellationInfo.fee.toLocaleString()}` : 'キャンセル料金は発生しません。'}`);
-      
-      setShowCancelConfirmation(false);
-      setSelectedOrderForCancel(null);
-      setCancellationInfo(null);
-    } catch (error) {
-      console.error('キャンセル処理エラー:', error);
-      alert('キャンセル処理中にエラーが発生しました。');
-    }
-  };
-
-  const handleShowStatusEditModal = (order: Order) => {
-    setSelectedOrderForStatusEdit(order);
-    setShowStatusEditModal(true);
-  };
-
-  const handleStatusChange = (newStatus: Order['status']) => {
-    if (!selectedOrderForStatusEdit) return;
-
-    const updatedOrders = orders.map(order => 
-      order.id === selectedOrderForStatusEdit.id 
-        ? { 
-            ...order, 
-            status: newStatus,
-            updatedAt: new Date(),
-            ...(newStatus === 'completed' ? { completedDate: new Date() } : {})
-          }
-        : order
-    );
-    
-    setOrders(updatedOrders);
-    DataService.saveOrders(updatedOrders);
-    setShowStatusEditModal(false);
-    setSelectedOrderForStatusEdit(null);
-  };
-
-  const handleAddProfessional = async () => {
-    if (!newProfessional.name || !newProfessional.email) {
-      alert('名前とメールアドレスは必須です');
-      return;
-    }
-
-    const professional: Professional = {
-      id: `pro-${Date.now()}`,
-      name: newProfessional.name,
-      email: newProfessional.email,
-      phone: newProfessional.phone,
-      password: newProfessional.password || 'defaultpass123',
-      role: 'professional',
-      labels: newProfessional.labels,
-      isActive: true,
-      completedJobs: 0,
-      rating: 5.0,
-      address: newProfessional.address
-    };
-
-    const updatedProfessionals = [...professionals, professional];
-    setProfessionals(updatedProfessionals);
-    DataService.saveProfessionals(updatedProfessionals);
-    setCustomers(DataService.loadCustomers());
-
-    await NotificationService.sendProfessionalRegistrationNotification(professional, true);
-
-    setNewProfessional({
+  // Professional management
+  const handleAddProfessional = () => {
+    setModalType('professional');
+    setSelectedItem(null);
+    setProfessionalForm({
       name: '',
       email: '',
       phone: '',
       password: '',
+      bio: '',
+      equipment: '',
+      experience: '',
+      isActive: true,
       labels: [],
       address: {
         postalCode: '',
@@ -405,18 +120,22 @@ const [labels, setLabels] = useState<Label[]>([]);
         detail: ''
       }
     });
-
-    alert('プロフェッショナルを追加しました');
+    setShowModal(true);
   };
 
   const handleEditProfessional = (professional: Professional) => {
-    setEditingProfessional(professional);
-    setNewProfessional({
+    setModalType('professional');
+    setSelectedItem(professional);
+    setProfessionalForm({
       name: professional.name,
       email: professional.email,
       phone: professional.phone || '',
-      password: '',
-      labels: professional.labels,
+      password: professional.password || '',
+      bio: professional.bio || '',
+      equipment: professional.equipment || '',
+      experience: professional.experience || '',
+      isActive: professional.isActive,
+      labels: professional.labels || [],
       address: professional.address || {
         postalCode: '',
         prefecture: '',
@@ -424,108 +143,152 @@ const [labels, setLabels] = useState<Label[]>([]);
         detail: ''
       }
     });
+    setShowModal(true);
   };
 
-  const handleUpdateProfessional = async () => {
-    if (!editingProfessional) return;
-
-    const updatedProfessional: Professional = {
-      ...editingProfessional,
-      name: newProfessional.name,
-      email: newProfessional.email,
-      phone: newProfessional.phone,
-      labels: newProfessional.labels,
-      address: newProfessional.address
+  const handleSaveProfessional = async () => {
+    const newProfessional: Professional = {
+      id: selectedItem?.id || `prof-${Date.now()}`,
+      name: professionalForm.name,
+      email: professionalForm.email,
+      role: 'professional',
+      phone: professionalForm.phone,
+      password: professionalForm.password,
+      bio: professionalForm.bio,
+      equipment: professionalForm.equipment,
+      experience: professionalForm.experience,
+      isActive: professionalForm.isActive,
+      labels: professionalForm.labels,
+      completedJobs: selectedItem?.completedJobs || 0,
+      rating: selectedItem?.rating || 5.0,
+      address: professionalForm.address
     };
 
-    const updatedProfessionals = professionals.map(p => 
-      p.id === editingProfessional.id ? updatedProfessional : p
-    );
-    
+    const updatedProfessionals = selectedItem
+      ? professionals.map(p => p.id === selectedItem.id ? newProfessional : p)
+      : [...professionals, newProfessional];
+
     setProfessionals(updatedProfessionals);
     DataService.saveProfessionals(updatedProfessionals);
 
-    await NotificationService.sendProfessionalRegistrationNotification(updatedProfessional, false);
+    // Send notification
+    await NotificationService.sendProfessionalRegistrationNotification(newProfessional, !selectedItem);
 
-    setEditingProfessional(null);
-    setNewProfessional({
-      name: '',
-      email: '',
-      phone: '',
-      password: '',
-      labels: [],
-      address: {
-        postalCode: '',
-        prefecture: '',
-        city: '',
-        detail: ''
-      }
-    });
-
-    alert('プロフェッショナル情報を更新しました');
+    setShowModal(false);
+    alert(`プロフェッショナルを${selectedItem ? '更新' : '追加'}しました`);
   };
 
-  const handleDeleteProfessional = (professionalId: string) => {
+  const handleDeleteProfessional = (id: string) => {
     if (confirm('このプロフェッショナルを削除しますか？')) {
-      const updatedProfessionals = professionals.filter(p => p.id !== professionalId);
+      const updatedProfessionals = professionals.filter(p => p.id !== id);
       setProfessionals(updatedProfessionals);
       DataService.saveProfessionals(updatedProfessionals);
       alert('プロフェッショナルを削除しました');
     }
   };
 
-  const handleToggleProfessionalStatus = (professionalId: string) => {
-    const updatedProfessionals = professionals.map(p => 
-      p.id === professionalId ? { ...p, isActive: !p.isActive } : p
+  // Label management
+  const handleAddLabel = () => {
+    setModalType('label');
+    setSelectedItem(null);
+    setLabelForm({ name: '', category: '' });
+    setShowModal(true);
+  };
+
+  const handleEditLabel = (label: Label) => {
+    setModalType('label');
+    setSelectedItem(label);
+    setLabelForm({ name: label.name, category: label.category });
+    setShowModal(true);
+  };
+
+  const handleSaveLabel = () => {
+    const newLabel: Label = {
+      id: selectedItem?.id || `label-${Date.now()}`,
+      name: labelForm.name,
+      category: labelForm.category
+    };
+
+    const updatedLabels = selectedItem
+      ? labels.map(l => l.id === selectedItem.id ? newLabel : l)
+      : [...labels, newLabel];
+
+    setLabels(updatedLabels);
+    DataService.saveLabels(updatedLabels);
+    setShowModal(false);
+    alert(`ラベルを${selectedItem ? '更新' : '追加'}しました`);
+  };
+
+  const handleDeleteLabel = (id: string) => {
+    if (confirm('このラベルを削除しますか？')) {
+      const updatedLabels = labels.filter(l => l.id !== id);
+      setLabels(updatedLabels);
+      DataService.saveLabels(updatedLabels);
+      alert('ラベルを削除しました');
+    }
+  };
+
+  // Order management
+  const handleAssignProfessional = async (orderId: string, professionalId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    const professional = professionals.find(p => p.id === professionalId);
+    
+    if (!order || !professional) return;
+
+    const updatedOrder = {
+      ...order,
+      status: 'matched' as const,
+      assignedProfessionalId: professionalId,
+      updatedAt: new Date()
+    };
+
+    const updatedOrders = orders.map(o => o.id === orderId ? updatedOrder : o);
+    setOrders(updatedOrders);
+    DataService.saveOrders(updatedOrders);
+
+    // Send notifications
+    await NotificationService.sendMatchNotification(updatedOrder, professional);
+
+    alert('プロフェッショナルをアサインしました');
+  };
+
+  const handleCancelOrder = async (orderId: string, reason: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    // Calculate cancellation fee
+    const scheduledDate = order.scheduledDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const planPrice = getPlanPrice(order.planId);
+    const cancellationInfo = BusinessDayService.calculateCancellationFee(
+      new Date(),
+      scheduledDate,
+      planPrice
     );
-    setProfessionals(updatedProfessionals);
-    DataService.saveProfessionals(updatedProfessionals);
+
+    const updatedOrder = {
+      ...order,
+      status: 'cancelled' as const,
+      cancellationFee: cancellationInfo.fee,
+      cancellationReason: reason,
+      updatedAt: new Date()
+    };
+
+    const updatedOrders = orders.map(o => o.id === orderId ? updatedOrder : o);
+    setOrders(updatedOrders);
+    DataService.saveOrders(updatedOrders);
+
+    // Send notifications
+    await NotificationService.sendCancellationNotification(
+      updatedOrder,
+      cancellationInfo.fee,
+      reason,
+      'admin'
+    );
+
+    alert(`注文をキャンセルしました。キャンセル料金: ¥${cancellationInfo.fee.toLocaleString()}`);
   };
 
-  const handleLabelToggle = (label: Label) => {
-    const isSelected = newProfessional.labels.some(l => l.id === label.id);
-    if (isSelected) {
-      setNewProfessional({
-        ...newProfessional,
-        labels: newProfessional.labels.filter(l => l.id !== label.id)
-      });
-    } else {
-      setNewProfessional({
-        ...newProfessional,
-        labels: [...newProfessional.labels, label]
-      });
-    }
-  };
-
-  const clearOrderFilters = () => {
-    setOrderSearchFilters({
-      customer: '',
-      service: '',
-      status: '',
-      dateType: 'created',
-      dateFrom: '',
-      dateTo: ''
-    });
-  };
-
-  const clearProfessionalFilters = () => {
-    setProfessionalSearchFilters({
-      name: '',
-      email: '',
-      phone: '',
-      label: ''
-    });
-  };
-
-  const handleStatsSort = (sortBy: 'name' | 'completedJobs' | 'rating') => {
-    if (statsSortBy === sortBy) {
-      setStatsSortOrder(statsSortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setStatsSortBy(sortBy);
-      setStatsSortOrder('desc');
-    }
-  };
-
+  // Utility functions
   const getServiceName = (serviceId: string, planId: string) => {
     const serviceNames: { [key: string]: { [key: string]: string } } = {
       'photo-service': {
@@ -547,99 +310,6 @@ const [labels, setLabels] = useState<Label[]>([]);
     return serviceNames[serviceId]?.[planId] || 'サービス';
   };
 
-  // Add new label
-  const handleAddLabel = () => {
-    if (!newLabelName.trim() || !newLabelCategory.trim()) return;
-    
-    const newLabel: Label = {
-      id: `label-${Date.now()}`,
-      name: newLabelName.trim(),
-      category: newLabelCategory.trim()
-    };
-    
-    const updatedLabels = [...labels, newLabel];
-    setLabels(updatedLabels);
-    DataService.saveLabels(updatedLabels);
-    
-    setNewLabelName('');
-    setNewLabelCategory('');
-    alert('ラベルを追加しました');
-  };
-
-  // Toggle business day
-  const toggleBusinessDay = (day: number) => {
-    const updatedDays = businessDays.includes(day)
-      ? businessDays.filter(d => d !== day)
-      : [...businessDays, day].sort();
-    setBusinessDays(updatedDays);
-  };
-
-  // Add holiday
-  const handleAddHoliday = () => {
-    if (!newHoliday || holidays.includes(newHoliday)) return;
-    const updatedHolidays = [...holidays, newHoliday].sort();
-    setHolidays(updatedHolidays);
-    setNewHoliday('');
-  };
-
-  // Remove holiday
-  const handleRemoveHoliday = (holiday: string) => {
-    setHolidays(holidays.filter(h => h !== holiday));
-  };
-
-  // Calculate sales statistics
-  const calculateSalesStats = () => {
-    const completedOrders = orders.filter(order => order.status === 'completed');
-    const now = new Date();
-    
-    if (salesPeriod === 'week') {
-      // Current week
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay());
-      startOfWeek.setHours(0, 0, 0, 0);
-      
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
-      endOfWeek.setHours(23, 59, 59, 999);
-      
-      const weekOrders = completedOrders.filter(order => 
-        order.completedDate && 
-        order.completedDate >= startOfWeek && 
-        order.completedDate <= endOfWeek
-      );
-      
-      const totalSales = weekOrders.reduce((sum, order) => sum + getPlanPrice(order.planId), 0);
-      const breakdown = weekOrders.reduce((acc, order) => {
-        const serviceName = getServiceName(order.serviceId, order.planId);
-        acc[serviceName] = (acc[serviceName] || 0) + getPlanPrice(order.planId);
-        return acc;
-      }, {} as Record<string, number>);
-      
-      return { totalSales, breakdown, period: '今週' };
-    } else {
-      // Current month
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      
-      const monthOrders = completedOrders.filter(order => 
-        order.completedDate && 
-        order.completedDate >= startOfMonth && 
-        order.completedDate <= endOfMonth
-      );
-      
-      const totalSales = monthOrders.reduce((sum, order) => sum + getPlanPrice(order.planId), 0);
-      const breakdown = monthOrders.reduce((acc, order) => {
-        const serviceName = getServiceName(order.serviceId, order.planId);
-        acc[serviceName] = (acc[serviceName] || 0) + getPlanPrice(order.planId);
-        return acc;
-      }, {} as Record<string, number>);
-      
-      return { totalSales, breakdown, period: '今月' };
-    }
-  };
-
-  const salesStats = calculateSalesStats();
-
   const getPlanPrice = (planId: string) => {
     const prices: { [key: string]: number } = {
       'real-estate': 15000,
@@ -655,20 +325,54 @@ const [labels, setLabels] = useState<Label[]>([]);
     return prices[planId] || 0;
   };
 
-  const getStatusBadge = (status: Order['status']) => {
-    const statusConfig = {
-      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '受付中' },
-      matched: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'マッチ済' },
-      in_progress: { bg: 'bg-purple-100', text: 'text-purple-800', label: '進行中' },
-      completed: { bg: 'bg-green-100', text: 'text-green-800', label: '完了' },
-      cancelled: { bg: 'bg-red-100', text: 'text-red-800', label: 'キャンセル' }
+  const getStatusIcon = (status: Order['status']) => {
+    switch (status) {
+      case 'pending':
+        return <Clock className="w-4 h-4 text-yellow-500" />;
+      case 'matched':
+      case 'in_progress':
+        return <Clock className="w-4 h-4 text-blue-500" />;
+      case 'completed':
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'cancelled':
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusLabel = (status: Order['status']) => {
+    const statusLabels = {
+      pending: '受付中',
+      matched: 'マッチ済',
+      in_progress: '作業中',
+      completed: '完了',
+      cancelled: 'キャンセル'
     };
-    const config = statusConfig[status];
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
-        {config.label}
-      </span>
-    );
+    return statusLabels[status];
+  };
+
+  // Filter functions
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         order.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'all' || order.status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
+
+  const filteredProfessionals = professionals.filter(prof => 
+    prof.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    prof.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Statistics
+  const stats = {
+    totalOrders: orders.length,
+    pendingOrders: orders.filter(o => o.status === 'pending').length,
+    completedOrders: orders.filter(o => o.status === 'completed').length,
+    totalRevenue: orders.filter(o => o.status === 'completed').reduce((sum, o) => sum + getPlanPrice(o.planId), 0),
+    activeProfessionals: professionals.filter(p => p.isActive).length,
+    totalProfessionals: professionals.length
   };
 
   return (
@@ -697,12 +401,10 @@ const [labels, setLabels] = useState<Label[]>([]);
         <div className="border-b border-gray-700 mb-8">
           <nav className="flex space-x-8">
             {[
-              { id: 'orders', label: '依頼管理', icon: ShoppingCart },
-              { id: 'professionals', label: 'プロフェッショナル管理', icon: Users },
-              { id: 'customers', label: 'カスタマー管理', icon: User },
-              { id: 'statistics', label: '統計', icon: BarChart3 },
-              { id: 'labels', label: 'ラベル管理', icon: Tag },
-              { id: 'settings', label: '設定', icon: Settings }
+              { id: 'overview', label: '概要', icon: BarChart3 },
+              { id: 'orders', label: '注文管理', icon: ShoppingCart },
+              { id: 'professionals', label: 'プロフェッショナル', icon: Users },
+              { id: 'labels', label: 'ラベル管理', icon: Settings }
             ].map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -720,181 +422,265 @@ const [labels, setLabels] = useState<Label[]>([]);
           </nav>
         </div>
 
+        {/* Overview Tab */}
+        {activeTab === 'overview' && (
+          <div>
+            <h2 className="text-2xl font-bold text-white mb-8">システム概要</h2>
+            
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">総注文数</p>
+                    <p className="text-2xl font-bold text-white">{stats.totalOrders}</p>
+                  </div>
+                  <ShoppingCart className="w-8 h-8 text-blue-500" />
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">受付中</p>
+                    <p className="text-2xl font-bold text-white">{stats.pendingOrders}</p>
+                  </div>
+                  <Clock className="w-8 h-8 text-yellow-500" />
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">完了済み</p>
+                    <p className="text-2xl font-bold text-white">{stats.completedOrders}</p>
+                  </div>
+                  <CheckCircle className="w-8 h-8 text-green-500" />
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">総売上</p>
+                    <p className="text-2xl font-bold text-white">¥{stats.totalRevenue.toLocaleString()}</p>
+                  </div>
+                  <DollarSign className="w-8 h-8 text-green-500" />
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">アクティブプロ</p>
+                    <p className="text-2xl font-bold text-white">{stats.activeProfessionals}</p>
+                  </div>
+                  <UserCheck className="w-8 h-8 text-purple-500" />
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">総プロ数</p>
+                    <p className="text-2xl font-bold text-white">{stats.totalProfessionals}</p>
+                  </div>
+                  <Users className="w-8 h-8 text-orange-500" />
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">ラベル数</p>
+                    <p className="text-2xl font-bold text-white">{labels.length}</p>
+                  </div>
+                  <Settings className="w-8 h-8 text-gray-500" />
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">成長率</p>
+                    <p className="text-2xl font-bold text-white">+12%</p>
+                  </div>
+                  <TrendingUp className="w-8 h-8 text-green-500" />
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Orders */}
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+              <h3 className="text-lg font-semibold text-white mb-4">最近の注文</h3>
+              <div className="space-y-4">
+                {orders.slice(0, 5).map((order) => (
+                  <div key={order.id} className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
+                    <div className="flex items-center gap-4">
+                      {getStatusIcon(order.status)}
+                      <div>
+                        <p className="font-medium text-white">{order.customerName}</p>
+                        <p className="text-sm text-gray-400">{getServiceName(order.serviceId, order.planId)}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-white">¥{getPlanPrice(order.planId).toLocaleString()}</p>
+                      <p className="text-sm text-gray-400">{order.createdAt.toLocaleDateString('ja-JP')}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div>
-            <h2 className="text-xl font-semibold text-white mb-6">依頼管理</h2>
-            
-            {/* Search Filters */}
-            <div className="bg-gray-800 p-4 rounded-xl mb-6 border border-gray-700">
-              <div className="flex items-center gap-2 mb-4">
-                <Search className="w-5 h-5 text-gray-400" />
-                <h3 className="text-lg font-medium text-white">検索フィルター</h3>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">カスタマー</label>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">注文管理</h2>
+              <div className="flex gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <input
                     type="text"
-                    placeholder="名前またはメール"
-                    value={orderSearchFilters.customer}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, customer: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
+                    placeholder="検索..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">サービス</label>
-                  <input
-                    type="text"
-                    placeholder="サービス名"
-                    value={orderSearchFilters.service}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, service: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">ステータス</label>
-                  <select
-                    value={orderSearchFilters.status}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, status: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
-                  >
-                    <option value="">すべて</option>
-                    <option value="pending">受付中</option>
-                    <option value="matched">マッチ済</option>
-                    <option value="in_progress">進行中</option>
-                    <option value="completed">完了</option>
-                    <option value="cancelled">キャンセル</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">日付タイプ</label>
-                  <select
-                    value={orderSearchFilters.dateType}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, dateType: e.target.value as 'created' | 'scheduled' | 'completed' })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
-                  >
-                    <option value="created">作成日</option>
-                    <option value="scheduled">予定日</option>
-                    <option value="completed">完了日</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">開始日</label>
-                  <input
-                    type="date"
-                    value={orderSearchFilters.dateFrom}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, dateFrom: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">終了日</label>
-                  <input
-                    type="date"
-                    value={orderSearchFilters.dateTo}
-                    onChange={(e) => setOrderSearchFilters({ ...orderSearchFilters, dateTo: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white text-sm"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex justify-end">
-                <button
-                  onClick={clearOrderFilters}
-                  className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
-                  フィルタークリア
-                </button>
+                  <option value="all">すべて</option>
+                  <option value="pending">受付中</option>
+                  <option value="matched">マッチ済</option>
+                  <option value="in_progress">作業中</option>
+                  <option value="completed">完了</option>
+                  <option value="cancelled">キャンセル</option>
+                </select>
               </div>
             </div>
-            
-            <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-700">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">依頼ID</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">サービス</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">顧客名</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">住所</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ステータス</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">作成日</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">予定日</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">完了日</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-700">
-                    {filteredOrders.map((order) => (
-                      <tr key={order.id} className="hover:bg-gray-700">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{order.id}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+
+            <div className="space-y-4">
+              {filteredOrders.map((order) => (
+                <div key={order.id} className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        {getStatusIcon(order.status)}
+                        <h3 className="text-lg font-semibold text-white">
                           {getServiceName(order.serviceId, order.planId)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">{order.customerName}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {order.address.prefecture} {order.address.city}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            {getStatusBadge(order.status)}
-                            <button
-                              onClick={() => handleShowStatusEditModal(order)}
-                              className="text-blue-400 hover:text-blue-300 p-1 rounded hover:bg-gray-600"
-                              title="ステータス編集"
+                        </h3>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          order.status === 'matched' || order.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                          order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {getStatusLabel(order.status)}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <p className="text-sm font-medium text-gray-400 mb-1">お客様情報</p>
+                          <p className="text-white">{order.customerName}</p>
+                          <div className="flex items-center gap-2 text-sm text-gray-400">
+                            <Phone className="w-4 h-4" />
+                            {order.customerPhone}
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-400">
+                            <Mail className="w-4 h-4" />
+                            {order.customerEmail}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <p className="text-sm font-medium text-gray-400 mb-1">作業場所</p>
+                          <div className="flex items-start gap-2">
+                            <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                            <div>
+                              <p className="text-white">〒{order.address.postalCode}</p>
+                              <p className="text-gray-400">
+                                {order.address.prefecture} {order.address.city}
+                              </p>
+                              <p className="text-gray-400">{order.address.detail}</p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <p className="text-sm font-medium text-gray-400 mb-1">注文詳細</p>
+                          <p className="text-2xl font-bold text-orange-400">
+                            ¥{getPlanPrice(order.planId).toLocaleString()}
+                          </p>
+                          <div className="flex items-center gap-2 text-sm text-gray-400">
+                            <Calendar className="w-4 h-4" />
+                            {order.createdAt.toLocaleDateString('ja-JP')}
+                          </div>
+                          <p className="text-sm text-gray-500">ID: {order.id}</p>
+                        </div>
+                      </div>
+
+                      {order.specialNotes && (
+                        <div className="mb-4 p-3 bg-yellow-900 bg-opacity-30 rounded-lg border border-yellow-700">
+                          <p className="text-sm font-medium text-yellow-300 mb-1">特記事項</p>
+                          <p className="text-sm text-yellow-200">{order.specialNotes}</p>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-4">
+                        {order.status === 'pending' && (
+                          <div className="flex gap-2">
+                            <select
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleAssignProfessional(order.id, e.target.value);
+                                  e.target.value = '';
+                                }
+                              }}
+                              className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
                             >
-                              <Edit className="w-4 h-4" />
+                              <option value="">プロを選択</option>
+                              {professionals
+                                .filter(p => p.isActive)
+                                .map(p => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                            <button
+                              onClick={() => {
+                                const reason = prompt('キャンセル理由を入力してください:');
+                                if (reason) {
+                                  handleCancelOrder(order.id, reason);
+                                }
+                              }}
+                              className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors"
+                            >
+                              キャンセル
                             </button>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {order.createdAt.toLocaleDateString('ja-JP')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {order.scheduledDate ? order.scheduledDate.toLocaleDateString('ja-JP') : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {order.completedDate ? order.completedDate.toLocaleDateString('ja-JP') : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleShowOrderDetail(order)}
-                              className="text-blue-400 hover:text-blue-300 p-1 rounded hover:bg-gray-600"
-                              title="詳細表示"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            {(order.status === 'pending' || order.status === 'matched') && (
-                              <button
-                                onClick={() => handleShowCancelConfirmation(order)}
-                                className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-gray-600"
-                                title="キャンセル"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            )}
+                        )}
+                        
+                        {order.assignedProfessionalId && (
+                          <div className="text-sm text-gray-400">
+                            担当: {professionals.find(p => p.id === order.assignedProfessionalId)?.name || 'Unknown'}
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
 
               {filteredOrders.length === 0 && (
                 <div className="text-center py-12">
                   <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-400">条件に一致する依頼がありません</p>
+                  <p className="text-gray-400">注文が見つかりません</p>
                 </div>
               )}
             </div>
@@ -905,1120 +691,354 @@ const [labels, setLabels] = useState<Label[]>([]);
         {activeTab === 'professionals' && (
           <div>
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-white">プロフェッショナル管理</h2>
-            </div>
-
-            {/* Search Filters */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Search className="w-5 h-5 text-gray-400" />
-                <h3 className="text-lg font-semibold text-white">検索・フィルター</h3>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">名前検索</label>
+              <h2 className="text-2xl font-bold text-white">プロフェッショナル管理</h2>
+              <div className="flex gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <input
                     type="text"
-                    placeholder="名前"
-                    value={professionalSearchFilters.name}
-                    onChange={(e) => setProfessionalSearchFilters({ ...professionalSearchFilters, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    placeholder="検索..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">メール検索</label>
-                  <input
-                    type="text"
-                    placeholder="メールアドレス"
-                    value={professionalSearchFilters.email}
-                    onChange={(e) => setProfessionalSearchFilters({ ...professionalSearchFilters, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">電話検索</label>
-                  <input
-                    type="text"
-                    placeholder="電話番号"
-                    value={professionalSearchFilters.phone}
-                    onChange={(e) => setProfessionalSearchFilters({ ...professionalSearchFilters, phone: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">ラベル検索</label>
-                  <input
-                    type="text"
-                    placeholder="スキル・ラベル"
-                    value={professionalSearchFilters.label}
-                    onChange={(e) => setProfessionalSearchFilters({ ...professionalSearchFilters, label: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex justify-end mt-4">
                 <button
-                  onClick={() => setProfessionalSearchFilters({
-                    name: '',
-                    email: '',
-                    phone: '',
-                    label: ''
-                  })}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  クリア
-                </button>
-              </div>
-            </div>
-
-            {/* Add/Edit Professional Form */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-8">
-              <h3 className="text-lg font-semibold text-white mb-4">
-                {editingProfessional ? 'プロフェッショナル編集' : 'プロフェッショナル追加'}
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    お名前 <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={newProfessional.name}
-                    onChange={(e) => setNewProfessional({ ...newProfessional, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    メールアドレス <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={newProfessional.email}
-                    onChange={(e) => setNewProfessional({ ...newProfessional, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">電話番号</label>
-                  <input
-                    type="tel"
-                    value={newProfessional.phone}
-                    onChange={(e) => setNewProfessional({ ...newProfessional, phone: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">パスワード</label>
-                  <input
-                    type="password"
-                    value={newProfessional.password}
-                    onChange={(e) => setNewProfessional({ ...newProfessional, password: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">スキル・ラベル</label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {availableLabels.map((label) => (
-                    <button
-                      key={label.id}
-                      onClick={() => handleLabelToggle(label)}
-                      className={`p-2 rounded-lg text-sm font-medium transition-colors ${
-                        newProfessional.labels.some(l => l.id === label.id)
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      }`}
-                    >
-                      {label.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">郵便番号</label>
-                  <input
-                    type="text"
-                    value={newProfessional.address.postalCode}
-                    onChange={(e) => setNewProfessional({
-                      ...newProfessional,
-                      address: { ...newProfessional.address, postalCode: e.target.value }
-                    })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">都道府県</label>
-                  <input
-                    type="text"
-                    value={newProfessional.address.prefecture}
-                    onChange={(e) => setNewProfessional({
-                      ...newProfessional,
-                      address: { ...newProfessional.address, prefecture: e.target.value }
-                    })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">市区町村</label>
-                  <input
-                    type="text"
-                    value={newProfessional.address.city}
-                    onChange={(e) => setNewProfessional({
-                      ...newProfessional,
-                      address: { ...newProfessional.address, city: e.target.value }
-                    })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">それ以降の住所</label>
-                  <input
-                    type="text"
-                    value={newProfessional.address.detail}
-                    onChange={(e) => setNewProfessional({
-                      ...newProfessional,
-                      address: { ...newProfessional.address, detail: e.target.value }
-                    })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-4">
-                {editingProfessional && (
-                  <button
-                    onClick={() => {
-                      setEditingProfessional(null);
-                      setNewProfessional({
-                        name: '',
-                        email: '',
-                        phone: '',
-                        password: '',
-                        labels: [],
-                        address: { postalCode: '', prefecture: '', city: '', detail: '' }
-                      });
-                    }}
-                    className="px-4 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
-                  >
-                    キャンセル
-                  </button>
-                )}
-                <button
-                  onClick={editingProfessional ? handleUpdateProfessional : handleAddProfessional}
+                  onClick={handleAddProfessional}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all"
                 >
-                  <Save className="w-4 h-4" />
-                  {editingProfessional ? '更新' : '追加'}
+                  <Plus className="w-4 h-4" />
+                  新規追加
                 </button>
               </div>
             </div>
 
-            {/* Professionals List */}
-            <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-700">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">名前</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">メール</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">電話</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">スキル</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ステータス</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">評価</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-700">
-                    {filteredProfessionals.map((professional) => (
-                      <tr key={professional.id} className="hover:bg-gray-700">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">{professional.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{professional.email}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{professional.phone}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          <div className="flex flex-wrap gap-1">
-                            {professional.labels.map((label) => (
-                              <span key={label.id} className="px-2 py-1 bg-orange-900 bg-opacity-30 text-orange-300 rounded text-xs">
-                                {label.name}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => handleToggleProfessionalStatus(professional.id)}
-                            className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              professional.isActive
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {professional.isActive ? 'アクティブ' : '非アクティブ'}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          ⭐ {professional.rating} ({professional.completedJobs}件)
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleShowProfessionalDetail(professional)}
-                              className="text-green-400 hover:text-green-300 p-1 rounded hover:bg-gray-600"
-                              title="詳細表示"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleEditProfessional(professional)}
-                              className="text-blue-400 hover:text-blue-300 p-1 rounded hover:bg-gray-600"
-                              title="編集"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteProfessional(professional.id)}
-                              className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-gray-600"
-                              title="削除"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {filteredProfessionals.length === 0 && (
-                <div className="text-center py-12">
-                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-400">条件に一致するプロフェッショナルがいません</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Customers Tab */}
-        {activeTab === 'customers' && (
-          <div>
-            <h2 className="text-xl font-semibold text-white mb-6">カスタマー管理</h2>
-            
-            {/* Customer Search Filters */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-6">
-              <h3 className="text-lg font-semibold text-white mb-4">検索フィルター</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">名前</label>
-                  <input
-                    type="text"
-                    value={customerSearchFilters.name}
-                    onChange={(e) => setCustomerSearchFilters({ ...customerSearchFilters, name: e.target.value })}
-                    placeholder="名前で検索"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">メールアドレス</label>
-                  <input
-                    type="email"
-                    value={customerSearchFilters.email}
-                    onChange={(e) => setCustomerSearchFilters({ ...customerSearchFilters, email: e.target.value })}
-                    placeholder="メールで検索"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">電話番号</label>
-                  <input
-                    type="tel"
-                    value={customerSearchFilters.phone}
-                    onChange={(e) => setCustomerSearchFilters({ ...customerSearchFilters, phone: e.target.value })}
-                    placeholder="電話番号で検索"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                </div>
-              </div>
-              <div className="mt-4">
-                <button
-                  onClick={() => setCustomerSearchFilters({ name: '', email: '', phone: '' })}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  フィルタークリア
-                </button>
-              </div>
-            </div>
-
-            {/* Customer List */}
-            <div className="space-y-4">
-              {getFilteredCustomers().map((customer) => (
-                <div key={customer.id} className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                  <div className="flex items-start justify-between">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProfessionals.map((professional) => (
+                <div key={professional.id} className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-white">{customer.name}</h3>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white">{professional.name}</h3>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          professional.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {professional.isActive ? 'アクティブ' : '非アクティブ'}
+                        </span>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-400 mb-1">連絡先</p>
-                          <div className="flex items-center gap-2 text-sm text-gray-300 mb-1">
-                            <Mail className="w-4 h-4" />
-                            {customer.email}
-                          </div>
-                          {customer.phone && (
-                            <div className="flex items-center gap-2 text-sm text-gray-300">
-                              <Phone className="w-4 h-4" />
-                              {customer.phone}
-                            </div>
-                          )}
+                      <div className="space-y-1 text-sm text-gray-400 mb-4">
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-4 h-4" />
+                          {professional.email}
                         </div>
-                        
-                        {customer.address && (
-                          <div>
-                            <p className="text-sm font-medium text-gray-400 mb-1">住所</p>
-                            <div className="flex items-start gap-2">
-                              <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                              <div>
-                                <p className="text-gray-300">〒{customer.address.postalCode}</p>
-                                <p className="text-gray-300">
-                                  {customer.address.prefecture} {customer.address.city}
-                                </p>
-                                <p className="text-gray-300">{customer.address.detail}</p>
-                              </div>
-                            </div>
+                        {professional.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-4 h-4" />
+                            {professional.phone}
                           </div>
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-500">
-                            登録日: {new Date(customer.id.split('-')[1] ? parseInt(customer.id.split('-')[1]) : Date.now()).toLocaleDateString('ja-JP')}
-                          </p>
+                      <div className="mb-4">
+                        <p className="text-sm font-medium text-gray-400 mb-2">スキル</p>
+                        <div className="flex flex-wrap gap-1">
+                          {professional.labels && professional.labels.length > 0 ? (
+                            professional.labels.map((label) => (
+                              <span key={label.id} className="px-2 py-1 bg-orange-900 bg-opacity-30 text-orange-300 rounded text-xs">
+                                {label.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-gray-500 text-xs">スキル未設定</span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                            アクティブ
-                          </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-sm">
+                        <div>
+                          <span className="text-gray-400">完了: </span>
+                          <span className="text-white font-medium">{professional.completedJobs}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">評価: </span>
+                          <span className="text-yellow-400 font-medium">⭐ {professional.rating}</span>
                         </div>
                       </div>
                     </div>
                   </div>
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => handleEditProfessional(professional)}
+                      className="p-2 text-blue-400 hover:text-blue-300 hover:bg-gray-700 rounded transition-colors"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProfessional(professional.id)}
+                      className="p-2 text-red-400 hover:text-red-300 hover:bg-gray-700 rounded transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
-
-              {getFilteredCustomers().length === 0 && (
-                <div className="text-center py-12">
-                  <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-400">
-                    {customers.length === 0 ? 'カスタマーが登録されていません' : '検索条件に一致するカスタマーが見つかりません'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Statistics Tab */}
-        {activeTab === 'statistics' && (
-          <div>
-            {/* Sales Statistics */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white">売上統計</h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSalesPeriod('week')}
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      salesPeriod === 'week'
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    週単位
-                  </button>
-                  <button
-                    onClick={() => setSalesPeriod('month')}
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      salesPeriod === 'month'
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    月単位
-                  </button>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Total Sales */}
-                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                  <h3 className="text-lg font-semibold text-white mb-4">{salesStats.period}の売上合計</h3>
-                  <div className="text-3xl font-bold text-orange-400">
-                    ¥{salesStats.totalSales.toLocaleString()}
-                  </div>
-                </div>
-                
-                {/* Sales Breakdown */}
-                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                  <h3 className="text-lg font-semibold text-white mb-4">売上内訳</h3>
-                  <div className="space-y-2">
-                    {Object.entries(salesStats.breakdown).map(([service, amount]) => (
-                      <div key={service} className="flex justify-between items-center">
-                        <span className="text-gray-300">{service}</span>
-                        <span className="text-orange-400 font-medium">¥{amount.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    {Object.keys(salesStats.breakdown).length === 0 && (
-                      <p className="text-gray-400">売上データがありません</p>
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
 
-            <h2 className="text-xl font-semibold text-white mb-6">統計</h2>
-            
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-white">プロフェッショナル別実績</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">並べ替え:</span>
-                  <button
-                    onClick={() => handleStatsSort('name')}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition-colors ${
-                      statsSortBy === 'name' ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    名前
-                    {statsSortBy === 'name' && <ArrowUpDown className="w-3 h-3" />}
-                  </button>
-                  <button
-                    onClick={() => handleStatsSort('completedJobs')}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition-colors ${
-                      statsSortBy === 'completedJobs' ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    完了件数
-                    {statsSortBy === 'completedJobs' && <ArrowUpDown className="w-3 h-3" />}
-                  </button>
-                  <button
-                    onClick={() => handleStatsSort('rating')}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition-colors ${
-                      statsSortBy === 'rating' ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    評価
-                    {statsSortBy === 'rating' && <ArrowUpDown className="w-3 h-3" />}
-                  </button>
-                </div>
+            {filteredProfessionals.length === 0 && (
+              <div className="text-center py-12">
+                <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-400">プロフェッショナルが見つかりません</p>
               </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-700">
-                      <th className="text-left py-3 px-4 text-gray-300 font-medium">プロフェッショナル</th>
-                      <th className="text-left py-3 px-4 text-gray-300 font-medium">完了件数</th>
-                      <th className="text-left py-3 px-4 text-gray-300 font-medium">サービス内訳</th>
-                      <th className="text-left py-3 px-4 text-gray-300 font-medium">評価</th>
-                      <th className="text-left py-3 px-4 text-gray-300 font-medium">ステータス</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {professionalStats.map(({ professional, completedJobs, serviceBreakdown, rating }) => (
-                      <tr key={professional.id} className="border-b border-gray-700 hover:bg-gray-700">
-                        <td className="py-3 px-4">
-                          <div>
-                            <p className="text-white font-medium">{professional.name}</p>
-                            <p className="text-sm text-gray-400">{professional.email}</p>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="text-2xl font-bold text-orange-400">{completedJobs}</span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="space-y-1">
-                            {Object.entries(serviceBreakdown).length > 0 ? (
-                              Object.entries(serviceBreakdown).map(([service, count]) => (
-                                <div key={service} className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-300">{service}</span>
-                                  <span className="text-sm text-orange-400 font-medium">{count}件</span>
-                                </div>
-                              ))
-                            ) : (
-                              <span className="text-sm text-gray-500">実績なし</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-1">
-                            <span className="text-yellow-400">⭐</span>
-                            <span className="text-white font-medium">{rating}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            professional.isActive 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {professional.isActive ? 'アクティブ' : '非アクティブ'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              
-              {professionalStats.length === 0 && (
-                <div className="text-center py-8">
-                  <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-400">統計データがありません</p>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         )}
 
         {/* Labels Tab */}
         {activeTab === 'labels' && (
           <div>
-            <h2 className="text-xl font-semibold text-white mb-6">ラベル管理</h2>
-            
-            {/* Add New Label */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-8">
-              <h3 className="text-lg font-semibold text-white mb-4">新しいラベルを追加</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">ラベル管理</h2>
+              <button
+                onClick={handleAddLabel}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                新規追加
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {labels.map((label) => (
+                <div key={label.id} className="bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-white">{label.name}</h3>
+                      <p className="text-sm text-gray-400">{label.category}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditLabel(label)}
+                        className="p-2 text-blue-400 hover:text-blue-300 hover:bg-gray-700 rounded transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteLabel(label.id)}
+                        className="p-2 text-red-400 hover:text-red-300 hover:bg-gray-700 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {labels.length === 0 && (
+              <div className="text-center py-12">
+                <Settings className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-400">ラベルがありません</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl max-w-2xl w-full p-6 border border-gray-700 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-white">
+                {modalType === 'professional' ? 
+                  (selectedItem ? 'プロフェッショナル編集' : 'プロフェッショナル追加') :
+                  (selectedItem ? 'ラベル編集' : 'ラベル追加')
+                }
+              </h3>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {modalType === 'professional' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">お名前</label>
+                    <input
+                      type="text"
+                      value={professionalForm.name}
+                      onChange={(e) => setProfessionalForm({...professionalForm, name: e.target.value})}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">メールアドレス</label>
+                    <input
+                      type="email"
+                      value={professionalForm.email}
+                      onChange={(e) => setProfessionalForm({...professionalForm, email: e.target.value})}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">電話番号</label>
+                    <input
+                      type="tel"
+                      value={professionalForm.phone}
+                      onChange={(e) => setProfessionalForm({...professionalForm, phone: e.target.value})}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">パスワード</label>
+                    <input
+                      type="password"
+                      value={professionalForm.password}
+                      onChange={(e) => setProfessionalForm({...professionalForm, password: e.target.value})}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">自己紹介</label>
+                  <textarea
+                    rows={3}
+                    value={professionalForm.bio}
+                    onChange={(e) => setProfessionalForm({...professionalForm, bio: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">郵便番号</label>
+                    <input
+                      type="text"
+                      value={professionalForm.address.postalCode}
+                      onChange={(e) => setProfessionalForm({
+                        ...professionalForm,
+                        address: {...professionalForm.address, postalCode: e.target.value}
+                      })}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">都道府県</label>
+                    <input
+                      type="text"
+                      value={professionalForm.address.prefecture}
+                      onChange={(e) => setProfessionalForm({
+                        ...professionalForm,
+                        address: {...professionalForm.address, prefecture: e.target.value}
+                      })}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">スキル・ラベル</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-32 overflow-y-auto">
+                    {labels.map((label) => (
+                      <label key={label.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={professionalForm.labels.some(l => l.id === label.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setProfessionalForm({
+                                ...professionalForm,
+                                labels: [...professionalForm.labels, label]
+                              });
+                            } else {
+                              setProfessionalForm({
+                                ...professionalForm,
+                                labels: professionalForm.labels.filter(l => l.id !== label.id)
+                              });
+                            }
+                          }}
+                          className="rounded border-gray-600 text-orange-500 focus:ring-orange-500"
+                        />
+                        <span className="text-gray-300">{label.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isActive"
+                    checked={professionalForm.isActive}
+                    onChange={(e) => setProfessionalForm({...professionalForm, isActive: e.target.checked})}
+                    className="rounded border-gray-600 text-orange-500 focus:ring-orange-500"
+                  />
+                  <label htmlFor="isActive" className="text-sm text-gray-300">アクティブ</label>
+                </div>
+
+                <div className="flex justify-end gap-4 pt-4">
+                  <button
+                    onClick={() => setShowModal(false)}
+                    className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSaveProfessional}
+                    className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all"
+                  >
+                    <Save className="w-4 h-4" />
+                    保存
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {modalType === 'label' && (
+              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">ラベル名</label>
                   <input
                     type="text"
-                    value={newLabelName}
-                    onChange={(e) => setNewLabelName(e.target.value)}
+                    value={labelForm.name}
+                    onChange={(e) => setLabelForm({...labelForm, name: e.target.value})}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                    placeholder="例: 不動産撮影"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">カテゴリ</label>
                   <input
                     type="text"
-                    value={newLabelCategory}
-                    onChange={(e) => setNewLabelCategory(e.target.value)}
+                    value={labelForm.category}
+                    onChange={(e) => setLabelForm({...labelForm, category: e.target.value})}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                    placeholder="例: 写真撮影"
                   />
                 </div>
-                <div className="flex items-end">
+
+                <div className="flex justify-end gap-4 pt-4">
                   <button
-                    onClick={handleAddLabel}
-                    className="w-full px-4 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all"
+                    onClick={() => setShowModal(false)}
+                    className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
                   >
-                    追加
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSaveLabel}
+                    className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all"
+                  >
+                    <Save className="w-4 h-4" />
+                    保存
                   </button>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {['写真撮影', 'お掃除', 'スタッフ派遣'].map((category) => (
-                  <div key={category}>
-                    <h3 className="text-lg font-semibold text-white mb-4">{category}</h3>
-                    <div className="space-y-2">
-                      {availableLabels
-                        .filter(label => label.category === category)
-                        .map((label) => (
-                          <div key={label.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
-                            <span className="text-gray-300">{label.name}</span>
-                            <div className="flex items-center gap-2">
-                              <button className="text-blue-400 hover:text-blue-300 p-1 rounded hover:bg-gray-600">
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-gray-600">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Settings Tab */}
-        {activeTab === 'settings' && (
-          <div>
-            {/* Business Days Settings */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-              <h3 className="text-lg font-semibold text-white mb-4">営業日設定</h3>
-              <p className="text-gray-400 mb-6">営業日とキャンセル料金の設定を管理します。</p>
-              
-              <div className="mb-6">
-                <h4 className="text-md font-medium text-white mb-4">営業日</h4>
-                <div className="grid grid-cols-7 gap-2">
-                  {[
-                    { day: 0, label: '日', name: '日曜日' },
-                    { day: 1, label: '月', name: '月曜日' },
-                    { day: 2, label: '火', name: '火曜日' },
-                    { day: 3, label: '水', name: '水曜日' },
-                    { day: 4, label: '木', name: '木曜日' },
-                    { day: 5, label: '金', name: '金曜日' },
-                    { day: 6, label: '土', name: '土曜日' }
-                  ].map(({ day, label, name }) => (
-                    <button
-                      key={day}
-                      onClick={() => toggleBusinessDay(day)}
-                      className={`p-3 rounded-lg text-center font-medium transition-colors ${
-                        businessDays.includes(day)
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                      }`}
-                      title={name}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="text-md font-medium text-white mb-4">祝日・特別休業日</h4>
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="date"
-                    value={newHoliday}
-                    onChange={(e) => setNewHoliday(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
-                  <button
-                    onClick={handleAddHoliday}
-                    className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
-                  >
-                    追加
-                  </button>
-                </div>
-                
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {holidays.map((holiday) => (
-                    <div key={holiday} className="flex items-center justify-between p-2 bg-gray-700 rounded-lg">
-                      <span className="text-white">{new Date(holiday).toLocaleDateString('ja-JP')}</span>
-                      <button
-                        onClick={() => handleRemoveHoliday(holiday)}
-                        className="text-red-400 hover:text-red-300 p-1"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {holidays.length === 0 && (
-                    <p className="text-gray-400 text-sm">祝日が設定されていません</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <h2 className="text-xl font-semibold text-white mb-6">設定</h2>
-            
-            <div className="space-y-6">
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">データ管理</h3>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => {
-                      if (confirm('すべてのデータをクリアしますか？この操作は取り消せません。')) {
-                        DataService.clearAllData();
-                        setOrders([]);
-                        setProfessionals([]);
-                        alert('データをクリアしました');
-                      }
-                    }}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    全データクリア
-                  </button>
-                  <button
-                    onClick={loadData}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    データ再読み込み
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">営業日設定</h3>
-                <p className="text-gray-400 mb-4">営業日とキャンセル料金の設定を管理します。</p>
-                <div className="grid grid-cols-7 gap-2">
-                  {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
-                    <button
-                      key={day}
-                      className={`p-2 rounded text-sm font-medium ${
-                        BusinessDayService.getBusinessDays().includes(index)
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-gray-700 text-gray-300'
-                      }`}
-                    >
-                      {day}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Order Detail Modal */}
-      {showOrderDetail && selectedOrderForDetail && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-xl max-w-2xl w-full p-6 border border-gray-700">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-white">依頼詳細</h3>
-              <button
-                onClick={() => setShowOrderDetail(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="text-lg font-semibold text-white mb-4">依頼情報</h4>
-                <div className="space-y-2 text-gray-300">
-                  <p><span className="font-medium text-gray-400">依頼ID:</span> {selectedOrderForDetail.id}</p>
-                  <p><span className="font-medium text-gray-400">サービス:</span> {getServiceName(selectedOrderForDetail.serviceId, selectedOrderForDetail.planId)}</p>
-                  <p><span className="font-medium text-gray-400">料金:</span> ¥{getPlanPrice(selectedOrderForDetail.planId).toLocaleString()}</p>
-                  <p><span className="font-medium text-gray-400">ステータス:</span> 
-                    <span className="ml-2">
-                      {getStatusBadge(selectedOrderForDetail.status)}
-                    </span>
-                  </p>
-                  <p><span className="font-medium text-gray-400">注文日:</span> {selectedOrderForDetail.createdAt.toLocaleDateString('ja-JP')}</p>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-lg font-semibold text-white mb-4">顧客情報</h4>
-                <div className="space-y-2 text-gray-300">
-                  <p><span className="font-medium text-gray-400">お名前:</span> {selectedOrderForDetail.customerName}</p>
-                  <p><span className="font-medium text-gray-400">電話番号:</span> {selectedOrderForDetail.customerPhone}</p>
-                  <p><span className="font-medium text-gray-400">メール:</span> {selectedOrderForDetail.customerEmail}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <h4 className="text-lg font-semibold text-white mb-4">作業場所</h4>
-              <div className="space-y-2 text-gray-300">
-                <p>〒{selectedOrderForDetail.address.postalCode}</p>
-                <p>{selectedOrderForDetail.address.prefecture} {selectedOrderForDetail.address.city}</p>
-                <p>{selectedOrderForDetail.address.detail}</p>
-                {selectedOrderForDetail.meetingPlace && (
-                  <p><span className="font-medium text-gray-400">集合場所:</span> {selectedOrderForDetail.meetingPlace}</p>
-                )}
-              </div>
-            </div>
-
-            {selectedOrderForDetail.preferredDates && (
-              <div className="mt-6">
-                <h4 className="text-lg font-semibold text-white mb-4">ご希望日時</h4>
-                <div className="space-y-2 text-gray-300">
-                  <p><span className="font-medium text-gray-400">第一希望:</span> {selectedOrderForDetail.preferredDates.first.toLocaleDateString('ja-JP')} {selectedOrderForDetail.preferredDates.first.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
-                  {selectedOrderForDetail.preferredDates.second && (
-                    <p><span className="font-medium text-gray-400">第二希望:</span> {selectedOrderForDetail.preferredDates.second.toLocaleDateString('ja-JP')} {selectedOrderForDetail.preferredDates.second.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
-                  )}
-                  {selectedOrderForDetail.preferredDates.third && (
-                    <p><span className="font-medium text-gray-400">第三希望:</span> {selectedOrderForDetail.preferredDates.third.toLocaleDateString('ja-JP')} {selectedOrderForDetail.preferredDates.third.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
-                  )}
-                </div>
-              </div>
             )}
-
-            {selectedOrderForDetail.specialNotes && (
-              <div className="mt-6">
-                <h4 className="text-lg font-semibold text-white mb-4">特記事項</h4>
-                <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedOrderForDetail.specialNotes}</p>
-              </div>
-            )}
-
-            {selectedOrderForDetail.assignedProfessionalId && (
-              <div className="mt-6">
-                <h4 className="text-lg font-semibold text-white mb-4">担当プロフェッショナル</h4>
-                <p className="text-gray-300">ID: {selectedOrderForDetail.assignedProfessionalId}</p>
-              </div>
-            )}
-
-            {selectedOrderForDetail.cancellationFee && (
-              <div className="mt-6">
-                <h4 className="text-lg font-semibold text-white mb-4">キャンセル情報</h4>
-                <div className="space-y-2 text-gray-300">
-                  <p><span className="font-medium text-gray-400">キャンセル料金:</span> ¥{selectedOrderForDetail.cancellationFee.toLocaleString()}</p>
-                  <p><span className="font-medium text-gray-400">理由:</span> {selectedOrderForDetail.cancellationReason}</p>
-                </div>
-              </div>
-            )}
-            
-            <div className="flex justify-end mt-8">
-              <button
-                onClick={() => setShowOrderDetail(false)}
-                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Professional Detail Modal */}
-      {showProfessionalDetail && selectedProfessionalForDetail && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-xl max-w-4xl w-full p-6 border border-gray-700 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-white">プロフェッショナル詳細</h3>
-              <button
-                onClick={() => setShowProfessionalDetail(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                <h4 className="text-lg font-semibold text-white mb-4">基本情報</h4>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400">お名前</label>
-                    <p className="mt-1 text-white">{selectedProfessionalForDetail.name}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400">メールアドレス</label>
-                    <p className="mt-1 text-white">{selectedProfessionalForDetail.email}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400">電話番号</label>
-                    <p className="mt-1 text-white">{selectedProfessionalForDetail.phone || '未設定'}</p>
-                  </div>
-                  {selectedProfessionalForDetail.address && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-400">住所</label>
-                      <p className="mt-1 text-white">
-                        〒{selectedProfessionalForDetail.address.postalCode}<br />
-                        {selectedProfessionalForDetail.address.prefecture} {selectedProfessionalForDetail.address.city}<br />
-                        {selectedProfessionalForDetail.address.detail}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-lg font-semibold text-white mb-4">スキル・資格</h4>
-                <div className="space-y-2">
-                  {selectedProfessionalForDetail.labels && selectedProfessionalForDetail.labels.length > 0 ? (
-                    selectedProfessionalForDetail.labels.map((label) => (
-                      <div key={label.id} className="flex items-center justify-between p-3 bg-orange-900 bg-opacity-30 rounded-lg border border-orange-700">
-                        <span className="font-medium text-orange-300">{label.name}</span>
-                        <span className="text-sm text-orange-400">{label.category}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-400">スキル・資格が設定されていません</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {selectedProfessionalForDetail.bio && (
-              <div className="mt-8">
-                <h4 className="text-lg font-semibold text-white mb-4">自己紹介</h4>
-                <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedProfessionalForDetail.bio}</p>
-              </div>
-            )}
-
-            {selectedProfessionalForDetail.equipment && (
-              <div className="mt-8">
-                <h4 className="text-lg font-semibold text-white mb-4">プロ機材</h4>
-                <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedProfessionalForDetail.equipment}</p>
-              </div>
-            )}
-
-            {selectedProfessionalForDetail.experience && (
-              <div className="mt-8">
-                <h4 className="text-lg font-semibold text-white mb-4">経歴</h4>
-                <p className="text-gray-300 bg-gray-700 p-4 rounded-lg">{selectedProfessionalForDetail.experience}</p>
-              </div>
-            )}
-
-            <div className="mt-8 pt-8 border-t border-gray-700">
-              <h4 className="text-lg font-semibold text-white mb-4">実績</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-orange-400">{selectedProfessionalForDetail.completedJobs}</div>
-                  <p className="text-sm text-gray-400">完了案件数</p>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-yellow-400">⭐ {selectedProfessionalForDetail.rating}</div>
-                  <p className="text-sm text-gray-400">平均評価</p>
-                </div>
-                <div className="text-center">
-                  <div className={`text-3xl font-bold ${selectedProfessionalForDetail.isActive ? 'text-green-400' : 'text-red-400'}`}>
-                    {selectedProfessionalForDetail.isActive ? 'ON' : 'OFF'}
-                  </div>
-                  <p className="text-sm text-gray-400">稼働状況</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex justify-end mt-8">
-              <button
-                onClick={() => setShowProfessionalDetail(false)}
-                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cancel Confirmation Modal */}
-      {showCancelConfirmation && selectedOrderForCancel && cancellationInfo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-white">キャンセル確認</h3>
-              <button
-                onClick={() => setShowCancelConfirmation(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="mb-6">
-              <p className="text-gray-300 mb-4">
-                以下の依頼をキャンセルしますか？
-              </p>
-              <div className="bg-gray-700 p-4 rounded-lg mb-4">
-                <p className="text-white font-medium">{getServiceName(selectedOrderForCancel.serviceId, selectedOrderForCancel.planId)}</p>
-                <p className="text-gray-400 text-sm">依頼ID: {selectedOrderForCancel.id}</p>
-              </div>
-              
-              <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 p-4 rounded-lg">
-                <h4 className="text-yellow-300 font-medium mb-2">キャンセル料金</h4>
-                <div className="space-y-1 text-sm">
-                  <p className="text-yellow-200">
-                    <span className="font-medium">料金:</span> ¥{cancellationInfo.fee.toLocaleString()} 
-                    ({cancellationInfo.feePercentage}%)
-                  </p>
-                  <p className="text-yellow-200">
-                    <span className="font-medium">営業時間:</span> {cancellationInfo.businessHours.toFixed(1)}時間
-                  </p>
-                  <p className="text-yellow-200">
-                    <span className="font-medium">理由:</span> {cancellationInfo.reason}
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex justify-end gap-4">
-              <button
-                onClick={() => setShowCancelConfirmation(false)}
-                className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
-              >
-                戻る
-              </button>
-              <button
-                onClick={handleCancelOrder}
-                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                キャンセルする
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Status Edit Modal */}
-      {showStatusEditModal && selectedOrderForStatusEdit && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-white">ステータス変更</h3>
-              <button
-                onClick={() => setShowStatusEditModal(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="mb-6">
-              <p className="text-gray-300 mb-4">
-                依頼ID: {selectedOrderForStatusEdit.id}
-              </p>
-              <p className="text-gray-300 mb-4">
-                現在のステータス: {getStatusBadge(selectedOrderForStatusEdit.status)}
-              </p>
-              
-              <div className="space-y-2">
-                {[
-                  { value: 'pending', label: '受付中' },
-                  { value: 'matched', label: 'マッチ済' },
-                  { value: 'in_progress', label: '進行中' },
-                  { value: 'completed', label: '完了' },
-                  { value: 'cancelled', label: 'キャンセル' }
-                ].map(({ value, label }) => (
-                  <button
-                    key={value}
-                    onClick={() => handleStatusChange(value as Order['status'])}
-                    className={`w-full p-3 rounded-lg text-left transition-colors ${
-                      selectedOrderForStatusEdit.status === value
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowStatusEditModal(false)}
-                className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
-              >
-                キャンセル
-              </button>
-            </div>
           </div>
         </div>
       )}
