@@ -90,6 +90,19 @@ export class NotificationService {
     console.log('✅ 管理者にカスタマー登録通知を送信完了');
   }
 
+  // プロフェッショナルへの案件通知（段階的マッチング用）
+  static async sendProfessionalJobNotification(order: Order, plan: Plan, professional: Professional): Promise<void> {
+    console.log(`📧 プロフェッショナル案件通知を送信中: ${professional.name}`);
+    
+    await this.sendEmail(
+      professional.email,
+      '新規案件のお知らせ',
+      this.generateProfessionalJobNotificationEmail(order, plan, professional)
+    );
+    
+    console.log(`✅ プロフェッショナル (${professional.email}) に案件通知を送信完了`);
+  }
+
   // リマインドメール送信
   static async sendReminderNotification(
     order: Order, 
