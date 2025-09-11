@@ -426,98 +426,283 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div>
-            <h2 className="text-2xl font-bold text-white mb-8">システム概要</h2>
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-bold text-white">システム概要</h2>
+              <div className="flex gap-4">
+                <select
+                  value={viewMode}
+                  onChange={(e) => setViewMode(e.target.value as any)}
+                  className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="current">現在の期間</option>
+                  <option value="comparison">期間比較</option>
+                  <option value="weekly">週単位</option>
+                  <option value="monthly">月単位</option>
+                </select>
+              </div>
+            </div>
+            
+            {/* Analytics Filters */}
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-8">
+              <h3 className="text-lg font-semibold text-white mb-4">フィルター設定</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                {/* Date Range */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">期間設定</label>
+                  <div className="space-y-2">
+                    <input
+                      type="date"
+                      value={dateRange.start.toISOString().split('T')[0]}
+                      onChange={(e) => setDateRange({...dateRange, start: new Date(e.target.value)})}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                    <input
+                      type="date"
+                      value={dateRange.end.toISOString().split('T')[0]}
+                      onChange={(e) => setDateRange({...dateRange, end: new Date(e.target.value)})}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
+                </div>
+                
+                {/* Quick Date Presets */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">クイック選択</label>
+                  <select
+                    onChange={(e) => handleDateRangeChange(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="">期間を選択</option>
+                    <option value="today">今日</option>
+                    <option value="yesterday">昨日</option>
+                    <option value="thisWeek">今週</option>
+                    <option value="lastWeek">先週</option>
+                    <option value="thisMonth">今月</option>
+                    <option value="lastMonth">先月</option>
+                  </select>
+                </div>
+                
+                {/* Service Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">サービス</label>
+                  <select
+                    value={selectedService}
+                    onChange={(e) => setSelectedService(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    {serviceOptions.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* Day of Week Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">曜日フィルター</label>
+                  <div className="flex gap-1">
+                    {dayOptions.map(day => (
+                      <button
+                        key={day.value}
+                        onClick={() => handleDayToggle(day.value)}
+                        className={`px-2 py-1 rounded text-sm font-medium transition-colors ${
+                          selectedDays.includes(day.value)
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="text-sm text-gray-400">
+                期間: {dateRange.start.toLocaleDateString('ja-JP')} ～ {dateRange.end.toLocaleDateString('ja-JP')}
+                {selectedService !== 'all' && ` | サービス: ${serviceOptions.find(s => s.value === selectedService)?.label}`}
+                {selectedDays.length > 0 && ` | 曜日: ${selectedDays.map(d => dayOptions.find(day => day.value === d)?.label).join(', ')}`}
+              </div>
+            </div>
             
             {/* Email Configuration Status */}
             <div className="mb-8">
               <EmailConfigStatus />
             </div>
             
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400">総注文数</p>
-                    <p className="text-2xl font-bold text-white">{stats.totalOrders}</p>
+            {/* Current Period Stats */}
+            {viewMode === 'current' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-400">総注文数</p>
+                      <p className="text-2xl font-bold text-white">{currentAnalytics.totalOrders}</p>
+                    </div>
+                    <ShoppingCart className="w-8 h-8 text-blue-500" />
                   </div>
-                  <ShoppingCart className="w-8 h-8 text-blue-500" />
+                </div>
+                
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-400">完了済み</p>
+                      <p className="text-2xl font-bold text-white">{currentAnalytics.completedOrders}</p>
+                    </div>
+                    <CheckCircle className="w-8 h-8 text-green-500" />
+                  </div>
+                </div>
+                
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-400">総売上</p>
+                      <p className="text-2xl font-bold text-white">¥{currentAnalytics.totalRevenue.toLocaleString()}</p>
+                    </div>
+                    <DollarSign className="w-8 h-8 text-green-500" />
+                  </div>
+                </div>
+                
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-400">平均注文額</p>
+                      <p className="text-2xl font-bold text-white">¥{Math.round(currentAnalytics.averageOrderValue).toLocaleString()}</p>
+                    </div>
+                    <TrendingUp className="w-8 h-8 text-purple-500" />
+                  </div>
                 </div>
               </div>
-
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400">受付中</p>
-                    <p className="text-2xl font-bold text-white">{stats.pendingOrders}</p>
+            )}
+            
+            {/* Comparison Stats */}
+            {viewMode === 'comparison' && comparisonData && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-gray-400">注文数比較</p>
+                    <div className={`flex items-center gap-1 text-sm font-medium ${
+                      comparisonData.growth.orders >= 0 ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      <TrendingUp className={`w-4 h-4 ${comparisonData.growth.orders < 0 ? 'rotate-180' : ''}`} />
+                      {comparisonData.growth.orders >= 0 ? '+' : ''}{comparisonData.growth.orders.toFixed(1)}%
+                    </div>
                   </div>
-                  <Clock className="w-8 h-8 text-yellow-500" />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-2xl font-bold text-white">{comparisonData.current.totalOrders}</p>
+                      <p className="text-sm text-gray-400">前期: {comparisonData.previous.totalOrders}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-gray-400">売上比較</p>
+                    <div className={`flex items-center gap-1 text-sm font-medium ${
+                      comparisonData.growth.revenue >= 0 ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      <TrendingUp className={`w-4 h-4 ${comparisonData.growth.revenue < 0 ? 'rotate-180' : ''}`} />
+                      {comparisonData.growth.revenue >= 0 ? '+' : ''}{comparisonData.growth.revenue.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-2xl font-bold text-white">¥{comparisonData.current.totalRevenue.toLocaleString()}</p>
+                      <p className="text-sm text-gray-400">前期: ¥{comparisonData.previous.totalRevenue.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-gray-400">完了数比較</p>
+                    <div className={`flex items-center gap-1 text-sm font-medium ${
+                      comparisonData.growth.completedOrders >= 0 ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      <TrendingUp className={`w-4 h-4 ${comparisonData.growth.completedOrders < 0 ? 'rotate-180' : ''}`} />
+                      {comparisonData.growth.completedOrders >= 0 ? '+' : ''}{comparisonData.growth.completedOrders.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-2xl font-bold text-white">{comparisonData.current.completedOrders}</p>
+                      <p className="text-sm text-gray-400">前期: {comparisonData.previous.completedOrders}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400">完了済み</p>
-                    <p className="text-2xl font-bold text-white">{stats.completedOrders}</p>
-                  </div>
-                  <CheckCircle className="w-8 h-8 text-green-500" />
+            )}
+            
+            {/* Weekly Data */}
+            {viewMode === 'weekly' && (
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-8">
+                <h3 className="text-lg font-semibold text-white mb-4">週単位データ</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {weeklyData.map((week, index) => (
+                    <div key={index} className="bg-gray-700 p-4 rounded-lg">
+                      <p className="text-sm font-medium text-gray-300 mb-2">{week.week}</p>
+                      <div className="space-y-1">
+                        <p className="text-lg font-bold text-white">{week.data.totalOrders}件</p>
+                        <p className="text-sm text-green-400">¥{week.data.totalRevenue.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">完了: {week.data.completedOrders}件</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400">総売上</p>
-                    <p className="text-2xl font-bold text-white">¥{stats.totalRevenue.toLocaleString()}</p>
-                  </div>
-                  <DollarSign className="w-8 h-8 text-green-500" />
+            )}
+            
+            {/* Monthly Data */}
+            {viewMode === 'monthly' && (
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-8">
+                <h3 className="text-lg font-semibold text-white mb-4">月単位データ</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {monthlyData.map((month, index) => (
+                    <div key={index} className="bg-gray-700 p-4 rounded-lg">
+                      <p className="text-sm font-medium text-gray-300 mb-2">{month.month}</p>
+                      <div className="space-y-1">
+                        <p className="text-lg font-bold text-white">{month.data.totalOrders}件</p>
+                        <p className="text-sm text-green-400">¥{month.data.totalRevenue.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">完了: {month.data.completedOrders}件</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400">アクティブプロ</p>
-                    <p className="text-2xl font-bold text-white">{stats.activeProfessionals}</p>
+            )}
+            
+            {/* Service Breakdown */}
+            {(viewMode === 'current' || viewMode === 'comparison') && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <h3 className="text-lg font-semibold text-white mb-4">サービス別注文数</h3>
+                  <div className="space-y-3">
+                    {Object.entries(currentAnalytics.ordersByService).map(([service, count]) => (
+                      <div key={service} className="flex items-center justify-between">
+                        <span className="text-gray-300">{service}</span>
+                        <span className="text-white font-medium">{count}件</span>
+                      </div>
+                    ))}
                   </div>
-                  <UserCheck className="w-8 h-8 text-purple-500" />
+                </div>
+                
+                <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <h3 className="text-lg font-semibold text-white mb-4">曜日別注文数</h3>
+                  <div className="space-y-3">
+                    {Object.entries(currentAnalytics.ordersByDay).map(([day, count]) => (
+                      <div key={day} className="flex items-center justify-between">
+                        <span className="text-gray-300">{day}曜日</span>
+                        <span className="text-white font-medium">{count}件</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400">総プロ数</p>
-                    <p className="text-2xl font-bold text-white">{stats.totalProfessionals}</p>
-                  </div>
-                  <Users className="w-8 h-8 text-orange-500" />
-                </div>
-              </div>
-
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400">ラベル数</p>
-                    <p className="text-2xl font-bold text-white">{labels.length}</p>
-                  </div>
-                  <Settings className="w-8 h-8 text-gray-500" />
-                </div>
-              </div>
-
-              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400">成長率</p>
-                    <p className="text-2xl font-bold text-white">+12%</p>
-                  </div>
-                  <TrendingUp className="w-8 h-8 text-green-500" />
-                </div>
-              </div>
-            </div>
+            )}
 
             {/* Recent Orders */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-8">
               <h3 className="text-lg font-semibold text-white mb-4">最近の注文</h3>
               <div className="space-y-4">
                 {orders.slice(0, 5).map((order) => (
@@ -535,6 +720,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+            
+            {/* System Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">アクティブプロ</p>
+                    <p className="text-2xl font-bold text-white">{stats.activeProfessionals}</p>
+                  </div>
+                  <UserCheck className="w-8 h-8 text-purple-500" />
+                </div>
+              </div>
+              
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">総プロ数</p>
+                    <p className="text-2xl font-bold text-white">{stats.totalProfessionals}</p>
+                  </div>
+                  <Users className="w-8 h-8 text-orange-500" />
+                </div>
+              </div>
+              
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">ラベル数</p>
+                    <p className="text-2xl font-bold text-white">{labels.length}</p>
+                  </div>
+                  <Settings className="w-8 h-8 text-gray-500" />
+                </div>
+              </div>
+              
+              <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400">受付中</p>
+                    <p className="text-2xl font-bold text-white">{stats.pendingOrders}</p>
+                  </div>
+                  <Clock className="w-8 h-8 text-yellow-500" />
+                </div>
               </div>
             </div>
           </div>
