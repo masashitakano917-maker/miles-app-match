@@ -6,6 +6,36 @@ import { BusinessDayService } from '../services/BusinessDayService';
 import { DataService } from '../services/DataService';
 import { SequentialMatchingService } from '../services/SequentialMatchingService';
 
+// 郵便番号から住所を取得するサービス
+const fetchAddressFromPostalCode = async (postalCode: string) => {
+  try {
+    const cleanPostalCode = postalCode.replace(/[^0-9]/g, '');
+    if (cleanPostalCode.length !== 7) return null;
+    
+    const response = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${cleanPostalCode}`);
+    const data = await response.json();
+    
+    if (data.status === 200 && data.results && data.results.length > 0) {
+      const result = data.results[0];
+      return {
+        prefecture: result.address1,
+        city: result.address2 + result.address3
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('郵便番号検索エラー:', error);
+    return null;
+  }
+};
+
+// 郵便番号フォーマット関数
+const formatPostalCode = (value: string) => {
+  const numbers = value.replace(/[^0-9]/g, '');
+  if (numbers.length <= 3) return numbers;
+  return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}`;
+};
+
 interface CustomerDashboardProps {
   user: User;
   onLogout: () => void;
@@ -27,6 +57,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
     businessHours: number;
     reason: string;
   } | null>(null);
+  const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   const [orderData, setOrderData] = useState({
     customerName: '',
     phone: '',
@@ -97,6 +128,30 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
     setSelectedPlan(plan);
     setShowOrderForm(true);
     setShowConfirmation(false);
+  };
+
+  // 郵便番号変更ハンドラー
+  const handlePostalCodeChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    const formattedValue = formatPostalCode(value);
+    
+    setOrderData({ ...orderData, postalCode: formattedValue });
+    
+    // 7桁の数字が入力されたら住所を自動取得
+    const numbers = value.replace(/[^0-9]/g, '');
+    if (numbers.length === 7) {
+      setIsLoadingAddress(true);
+      const addressData = await fetchAddressFromPostalCode(numbers);
+      
+      if (addressData) {
+        setOrderData(prev => ({
+          ...prev,
+          prefecture: addressData.prefecture,
+          city: addressData.city
+        }));
+      }
+      setIsLoadingAddress(false);
+    }
   };
 
   const handleOrderFormSubmit = (e: React.FormEvent) => {
@@ -527,14 +582,22 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     郵便番号 <span className="text-red-400">*</span>
                   </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="000-0000"
-                    value={orderData.postalCode}
-                    onChange={(e) => setOrderData({ ...orderData, postalCode: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="000-0000"
+                      value={orderData.postalCode}
+                      onChange={handlePostalCodeChange}
+                      maxLength={8}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    />
+                    {isLoadingAddress && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-500"></div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -546,7 +609,8 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
                     required
                     value={orderData.prefecture}
                     onChange={(e) => setOrderData({ ...orderData, prefecture: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    className={`w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white ${isLoadingAddress ? 'bg-gray-600' : ''}`}
+                    readOnly={isLoadingAddress}
                   />
                 </div>
 
@@ -559,7 +623,8 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
                     required
                     value={orderData.city}
                     onChange={(e) => setOrderData({ ...orderData, city: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    className={`w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white ${isLoadingAddress ? 'bg-gray-600' : ''}`}
+                    readOnly={isLoadingAddress}
                   />
                 </div>
               </div>

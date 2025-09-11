@@ -15,7 +15,9 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Tag,
+  UserCheck
 } from 'lucide-react';
 import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';
@@ -34,6 +36,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showProfessionalForm, setShowProfessionalForm] = useState(false);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
+  const [showManualAssign, setShowManualAssign] = useState(false);
+  const [selectedOrderForAssign, setSelectedOrderForAssign] = useState<Order | null>(null);
+  const [selectedProfessionalForAssign, setSelectedProfessionalForAssign] = useState<string>('');
   
   // Customer management state
   const [customers, setCustomers] = useState<any[]>([]);
@@ -41,10 +46,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   // Label management state
   const [availableLabels, setAvailableLabels] = useState<any[]>([]);
   const [selectedLabels, setSelectedLabels] = useState<any[]>([]);
+  const [showLabelForm, setShowLabelForm] = useState(false);
+  const [editingLabel, setEditingLabel] = useState<any>(null);
+  const [labelForm, setLabelForm] = useState({
+    name: '',
+    category: ''
+  });
   
   // Analytics state
   const [viewMode, setViewMode] = useState<'current' | 'comparison'>('current');
-  const [dateRange, setDateRange] = useState(AnalyticsService.getDateRangePresets().thisMonth);
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
+    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    end: new Date()
+  });
+  const [customDateRange, setCustomDateRange] = useState({
+    startDate: '',
+    endDate: ''
+  });
   const [selectedService, setSelectedService] = useState<string>('');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
 
@@ -144,6 +162,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       DataService.saveOrders(updatedOrders);
       console.log(`✅ 注文 ${orderId} を削除しました`);
     }
+  };
+
+  const handleShowManualAssign = (order: Order) => {
+    setSelectedOrderForAssign(order);
+    setShowManualAssign(true);
+  };
+
+  const handleManualAssign = async () => {
+    if (!selectedOrderForAssign || !selectedProfessionalForAssign) return;
+
+    const updatedOrders = orders.map(order => 
+      order.id === selectedOrderForAssign.id 
+        ? { 
+            ...order, 
+            status: 'matched' as const,
+            assignedProfessionalId: selectedProfessionalForAssign,
+            updatedAt: new Date()
+          }
+        : order
+    );
+    
+    setOrders(updatedOrders);
+    DataService.saveOrders(updatedOrders);
+
+    // Send notifications
+    const professional = professionals.find(p => p.id === selectedProfessionalForAssign);
+    if (professional) {
+      await NotificationService.sendMatchNotification(selectedOrderForAssign, professional);
+    }
+
+    setShowManualAssign(false);
+    setSelectedOrderForAssign(null);
+    setSelectedProfessionalForAssign('');
+    console.log(`✅ 手動アサイン完了: ${selectedOrderForAssign.id} → ${selectedProfessionalForAssign}`);
   };
 
   const handleAddProfessional = () => {
@@ -246,6 +298,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     }
   };
 
+  // Label management functions
+  const handleAddLabel = () => {
+    setEditingLabel(null);
+    setLabelForm({ name: '', category: '' });
+    setShowLabelForm(true);
+  };
+
+  const handleEditLabel = (label: any) => {
+    setEditingLabel(label);
+    setLabelForm({ name: label.name, category: label.category });
+    setShowLabelForm(true);
+  };
+
+  const handleSaveLabel = () => {
+    const isNew = !editingLabel;
+    const labelData = {
+      id: editingLabel?.id || `label-${Date.now()}`,
+      name: labelForm.name,
+      category: labelForm.category
+    };
+
+    let updatedLabels;
+    if (isNew) {
+      updatedLabels = [...availableLabels, labelData];
+    } else {
+      updatedLabels = availableLabels.map(l => 
+        l.id === editingLabel.id ? labelData : l
+      );
+    }
+
+    setAvailableLabels(updatedLabels);
+    DataService.saveLabels(updatedLabels);
+    setShowLabelForm(false);
+    console.log(`✅ ラベルを${isNew ? '追加' : '更新'}しました`);
+  };
+
+  const handleDeleteLabel = (labelId: string) => {
+    if (confirm('このラベルを削除しますか？')) {
+      const updatedLabels = availableLabels.filter(l => l.id !== labelId);
+      setAvailableLabels(updatedLabels);
+      DataService.saveLabels(updatedLabels);
+      console.log(`✅ ラベル ${labelId} を削除しました`);
+    }
+  };
+
   const handleAddLabel = (label: any) => {
     if (!selectedLabels.find(l => l.id === label.id)) {
       setSelectedLabels([...selectedLabels, label]);
@@ -254,6 +351,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
   const handleRemoveLabel = (labelId: string) => {
     setSelectedLabels(selectedLabels.filter(l => l.id !== labelId));
+  };
+
+  // Date range handling
+  const handleDateRangeChange = () => {
+    if (customDateRange.startDate && customDateRange.endDate) {
+      setDateRange({
+        start: new Date(customDateRange.startDate),
+        end: new Date(customDateRange.endDate)
+      });
+    }
   };
 
   const getStatusIcon = (status: Order['status']) => {
@@ -391,6 +498,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               { id: 'overview', label: '概要', icon: TrendingUp },
               { id: 'orders', label: '注文管理', icon: ShoppingCart },
               { id: 'professionals', label: 'プロフェッショナル管理', icon: Users },
+              { id: 'labels', label: 'ラベル管理', icon: Tag },
+              { id: 'customers', label: 'カスタマー管理', icon: Users },
               { id: 'analytics', label: '分析', icon: Calendar }
             ].map(({ id, label, icon: Icon }) => (
               <button
@@ -406,17 +515,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 {label}
               </button>
             ))}
-            <button
-              onClick={() => setActiveTab('customers')}
-              className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'customers'
-                  ? 'border-orange-500 text-orange-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              カスタマー管理
-            </button>
           </nav>
         </div>
 
@@ -513,7 +611,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             {getStatusIcon(order.status)}
-                            <span className="text-sm text-gray-300">{getStatusLabel(order.status)}</span>
+                            <select
+                              value={order.status}
+                              onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as Order['status'])}
+                              className="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
+                            >
+                              <option value="pending">受付中</option>
+                              <option value="matched">マッチ済</option>
+                              <option value="in_progress">作業中</option>
+                              <option value="completed">完了</option>
+                              <option value="cancelled">キャンセル</option>
+                            </select>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
@@ -527,6 +635,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
+                            {order.status === 'pending' && (
+                              <button
+                                onClick={() => handleShowManualAssign(order)}
+                                className="text-green-400 hover:text-green-300"
+                                title="手動アサイン"
+                              >
+                                <UserCheck className="w-4 h-4" />
+                              </button>
+                            )}
                             <button
                               onClick={() => handleDeleteOrder(order.id)}
                               className="text-red-400 hover:text-red-300"
@@ -632,6 +749,70 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           </div>
         )}
 
+        {/* Labels Tab */}
+        {activeTab === 'labels' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-white">ラベル管理</h2>
+              <button
+                onClick={handleAddLabel}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                新規追加
+              </button>
+            </div>
+            
+            <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-700">
+                  <thead className="bg-gray-700">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        ラベル名
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        カテゴリ
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        操作
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-gray-800 divide-y divide-gray-700">
+                    {availableLabels.map((label) => (
+                      <tr key={label.id} className="hover:bg-gray-700">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-white">{label.name}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {label.category}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEditLabel(label)}
+                              className="text-blue-400 hover:text-blue-300"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteLabel(label.id)}
+                              className="text-red-400 hover:text-red-300"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Customers Tab */}
         {activeTab === 'customers' && (
           <div>
@@ -716,7 +897,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
             
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 mb-8">
               <h3 className="text-lg font-semibold text-white mb-4">フィルター</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">開始日</label>
+                  <input
+                    type="date"
+                    value={customDateRange.startDate}
+                    onChange={(e) => setCustomDateRange({...customDateRange, startDate: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">終了日</label>
+                  <input
+                    type="date"
+                    value={customDateRange.endDate}
+                    onChange={(e) => setCustomDateRange({...customDateRange, endDate: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">サービス</label>
                   <select
@@ -742,6 +941,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     ))}
                   </select>
                 </div>
+              </div>
+              <div className="mt-4">
+                <button
+                  onClick={handleDateRangeChange}
+                  className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                >
+                  フィルター適用
+                </button>
               </div>
             </div>
 
@@ -849,6 +1056,122 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
               >
                 閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Assign Modal */}
+      {showManualAssign && selectedOrderForAssign && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-white">手動アサイン</h3>
+              <button
+                onClick={() => setShowManualAssign(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-300 mb-4">
+                注文ID: {selectedOrderForAssign.id}
+              </p>
+              <p className="text-gray-300 mb-4">
+                サービス: {getServiceName(selectedOrderForAssign.serviceId, selectedOrderForAssign.planId)}
+              </p>
+              
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                プロフェッショナルを選択
+              </label>
+              <select
+                value={selectedProfessionalForAssign}
+                onChange={(e) => setSelectedProfessionalForAssign(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+              >
+                <option value="">選択してください</option>
+                {professionals.filter(p => p.isActive).map(professional => (
+                  <option key={professional.id} value={professional.id}>
+                    {professional.name} - {professional.labels?.map(l => l.name).join(', ')}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setShowManualAssign(false)}
+                className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleManualAssign}
+                disabled={!selectedProfessionalForAssign}
+                className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                アサイン
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Label Form Modal */}
+      {showLabelForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-white">
+                {editingLabel ? 'ラベル編集' : 'ラベル追加'}
+              </h3>
+              <button
+                onClick={() => setShowLabelForm(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">ラベル名</label>
+                <input
+                  type="text"
+                  value={labelForm.name}
+                  onChange={(e) => setLabelForm({...labelForm, name: e.target.value})}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  placeholder="例: 不動産撮影"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">カテゴリ</label>
+                <input
+                  type="text"
+                  value={labelForm.category}
+                  onChange={(e) => setLabelForm({...labelForm, category: e.target.value})}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  placeholder="例: 写真撮影"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-4 mt-6">
+              <button
+                onClick={() => setShowLabelForm(false)}
+                className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSaveLabel}
+                disabled={!labelForm.name || !labelForm.category}
+                className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                保存
               </button>
             </div>
           </div>
