@@ -119,7 +119,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
 
     setProfessionalData(updatedProfessional);
     setIsEditingProfile(false);
-    alert('プロフィールを更新しました');
+    console.log('✅ プロフィールを更新しました');
   };
 
   const handleCancelEdit = () => {

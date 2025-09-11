@@ -222,7 +222,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
         'customer'
       );
 
-      alert(`注文をキャンセルしました。${cancellationInfo.fee > 0 ? `キャンセル料金: ¥${cancellationInfo.fee.toLocaleString()}` : 'キャンセル料金は発生しません。'}`);
+      console.log(`✅ 注文をキャンセルしました。${cancellationInfo.fee > 0 ? `キャンセル料金: ¥${cancellationInfo.fee.toLocaleString()}` : 'キャンセル料金は発生しません。'}`);
       
       setShowCancelConfirmation(false);
       setSelectedOrderForCancel(null);

@@ -286,7 +286,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       'admin'
     );
 
-    alert(`注文をキャンセルしました。キャンセル料金: ¥${cancellationInfo.fee.toLocaleString()}`);
+    console.log(`✅ 注文をキャンセルしました。キャンセル料金: ¥${cancellationInfo.fee.toLocaleString()}`);
   };
 
   // Utility functions
