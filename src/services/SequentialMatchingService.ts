@@ -54,7 +54,7 @@ export class SequentialMatchingService {
       console.log(`📋 ${eligibleProfessionals.length}名のプロフェッショナルが対象`);
       console.log(`📍 距離順リスト:`, eligibleProfessionals.map(p => `${p.professional.name}: ${p.distance}km`));
 
-      // 最初のプロに通知（1人だけ）
+      // 最初のプロに通知（1人だけ） - 再帰呼び出しを避ける
       await this.notifyNextProfessional(session);
 
     } catch (error) {
@@ -71,9 +71,11 @@ export class SequentialMatchingService {
     }
 
     const { professional, distance } = session.eligibleProfessionals[session.currentIndex];
-    session.notifiedProfessionals.add(professional.id);
 
     console.log(`📧 通知送信 [${session.currentIndex + 1}/${session.eligibleProfessionals.length}]: ${professional.name} (距離: ${distance}km)`);
+
+    // 通知済みリストに追加
+    session.notifiedProfessionals.add(professional.id);
 
     // プロフェッショナルの新規依頼リストに追加（応募可能状態にする）
     this.addOrderToProfessional(professional.id, session.orderId);
@@ -92,10 +94,10 @@ export class SequentialMatchingService {
     // 次のインデックスに進める
     session.currentIndex++;
 
-    // 7分後に次のプロに通知するタイマー設定
+    // 7分後に次のプロに通知するタイマー設定（再帰呼び出しではなくタイマーで制御）
     session.timerId = setTimeout(async () => {
       if (session.isActive) {
-        console.log(`⏰ ${this.WAIT_TIME_MINUTES}分経過 - 次のプロに通知 (現在: ${session.currentIndex}/${session.eligibleProfessionals.length})`);
+        console.log(`⏰ ${this.WAIT_TIME_MINUTES}分経過 - 次のプロに通知開始`);
         await this.notifyNextProfessional(session);
       }
     }, this.WAIT_TIME_MINUTES * 60 * 1000);
@@ -214,6 +216,13 @@ export class SequentialMatchingService {
     if (professionalsWithAddress.length === 0) {
       console.log('❌ 住所が設定されたプロフェッショナルが見つかりません');
       return [];
+    }
+
+    // Google Maps APIキーの確認
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    if (!apiKey || apiKey === 'your_google_maps_api_key_here') {
+      console.log('⚠️ Google Maps APIキーが未設定のため、距離計算をスキップして住所設定済みプロを返します');
+      return professionalsWithAddress.map(professional => ({ professional, distance: 0 }));
     }
 
     // 距離計算とソート
