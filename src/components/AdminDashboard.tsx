@@ -34,6 +34,7 @@ import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';
 import { LocationService } from '../services/LocationService';
 import { BusinessDayService } from '../services/BusinessDayService';
+import { EmailService } from '../services/EmailService';
 
 interface AdminDashboardProps {
   user: User;
@@ -426,6 +427,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         {activeTab === 'overview' && (
           <div>
             <h2 className="text-2xl font-bold text-white mb-8">システム概要</h2>
+            
+            {/* Email Configuration Status */}
+            <div className="mb-8">
+              <EmailConfigStatus />
+            </div>
             
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -1040,6 +1046,87 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               </div>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Email Configuration Status Component
+const EmailConfigStatus: React.FC = () => {
+  const [configStatus, setConfigStatus] = useState<{
+    isConfigured: boolean;
+    missingVars: string[];
+    config: Record<string, string>;
+  } | null>(null);
+  const [isTestingSendGrid, setIsTestingSendGrid] = useState(false);
+
+  useEffect(() => {
+    setConfigStatus(EmailService.checkConfiguration());
+  }, []);
+
+  const handleTestSendGrid = async () => {
+    setIsTestingSendGrid(true);
+    try {
+      const success = await EmailService.sendTestEmail();
+      if (success) {
+        alert('テストメールを送信しました。受信ボックスをご確認ください。');
+      } else {
+        alert('テストメール送信に失敗しました。設定を確認してください。');
+      }
+    } catch (error) {
+      console.error('テストメール送信エラー:', error);
+      alert('テストメール送信中にエラーが発生しました。');
+    } finally {
+      setIsTestingSendGrid(false);
+    }
+  };
+
+  if (!configStatus) return null;
+
+  return (
+    <div className={`p-6 rounded-xl border ${
+      configStatus.isConfigured 
+        ? 'bg-green-900 bg-opacity-30 border-green-700' 
+        : 'bg-yellow-900 bg-opacity-30 border-yellow-700'
+    }`}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-white">メール設定状況</h3>
+        {configStatus.isConfigured && (
+          <button
+            onClick={handleTestSendGrid}
+            disabled={isTestingSendGrid}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+          >
+            {isTestingSendGrid ? 'テスト中...' : 'テスト送信'}
+          </button>
+        )}
+      </div>
+      
+      {configStatus.isConfigured ? (
+        <div>
+          <p className="text-green-300 mb-3">✅ SendGrid設定完了 - 本番メール送信が有効です</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            {Object.entries(configStatus.config).map(([key, value]) => (
+              <div key={key} className="flex justify-between">
+                <span className="text-green-400">{key.replace('VITE_', '')}:</span>
+                <span className="text-green-200">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div>
+          <p className="text-yellow-300 mb-3">⚠️ SendGrid未設定 - シミュレーションモードで動作中</p>
+          <p className="text-yellow-200 text-sm mb-3">以下の環境変数を設定してください:</p>
+          <ul className="text-yellow-200 text-sm space-y-1">
+            {configStatus.missingVars.map(varName => (
+              <li key={varName} className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                {varName}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
