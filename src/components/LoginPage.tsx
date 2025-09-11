@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { LogIn, Eye, EyeOff, ChevronDown } from 'lucide-react';
+import { LogIn, Eye, EyeOff, ChevronDown, User as UserIcon } from 'lucide-react';
 import { DataService } from '../services/DataService';
 
 interface LoginPageProps {

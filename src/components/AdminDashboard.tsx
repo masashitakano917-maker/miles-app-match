@@ -19,7 +19,11 @@ import {
   Filter,
   BarChart3,
   ChevronDown,
-  ArrowUpDown
+  ArrowUpDown,
+  Mail,
+  Phone,
+  MapPin,
+  Tag
 } from 'lucide-react';
 import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';
@@ -34,6 +38,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [showOrderDetail, setShowOrderDetail] = useState(false);
   const [showProfessionalDetail, setShowProfessionalDetail] = useState(false);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
@@ -65,6 +70,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     email: '',
     phone: '',
     label: ''
+  });
+
+  const [customerSearchFilters, setCustomerSearchFilters] = useState({
+    name: '',
+    email: '',
+    phone: ''
   });
 
   // 統計の並べ替え
@@ -115,9 +126,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const loadData = () => {
     const loadedOrders = DataService.loadOrders();
     const loadedProfessionals = DataService.loadProfessionals();
+    const loadedCustomers = DataService.loadCustomers();
     
     setOrders(loadedOrders);
     setProfessionals(loadedProfessionals);
+    setCustomers(loadedCustomers);
   };
 
   // Filter functions
@@ -175,6 +188,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     
     return matchesName && matchesEmail && matchesPhone && matchesLabel;
   });
+
+  const getFilteredCustomers = () => {
+    let filteredCustomers = customers;
+
+    if (customerSearchFilters.name) {
+      filteredCustomers = filteredCustomers.filter(customer =>
+        customer.name.toLowerCase().includes(customerSearchFilters.name.toLowerCase())
+      );
+    }
+
+    if (customerSearchFilters.email) {
+      filteredCustomers = filteredCustomers.filter(customer =>
+        customer.email.toLowerCase().includes(customerSearchFilters.email.toLowerCase())
+      );
+    }
+
+    if (customerSearchFilters.phone) {
+      filteredCustomers = filteredCustomers.filter(customer =>
+        customer.phone && customer.phone.includes(customerSearchFilters.phone)
+      );
+    }
+
+    return filteredCustomers;
+  };
 
   // Statistics calculation
   const getProfessionalStats = () => {
@@ -342,6 +379,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     const updatedProfessionals = [...professionals, professional];
     setProfessionals(updatedProfessionals);
     DataService.saveProfessionals(updatedProfessionals);
+    setCustomers(DataService.loadCustomers());
 
     await NotificationService.sendProfessionalRegistrationNotification(professional, true);
 
@@ -559,8 +597,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
             {[
               { id: 'orders', label: '依頼管理', icon: ShoppingCart },
               { id: 'professionals', label: 'プロフェッショナル管理', icon: Users },
+              { id: 'customers', label: 'カスタマー管理', icon: User },
               { id: 'statistics', label: '統計', icon: BarChart3 },
-              { id: 'labels', label: 'ラベル管理', icon: ClipboardList },
+              { id: 'labels', label: 'ラベル管理', icon: Tag },
               { id: 'settings', label: '設定', icon: Settings }
             ].map(({ id, label, icon: Icon }) => (
               <button
@@ -1069,6 +1108,127 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 <div className="text-center py-12">
                   <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-400">条件に一致するプロフェッショナルがいません</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Customers Tab */}
+        {activeTab === 'customers' && (
+          <div>
+            <h2 className="text-xl font-semibold text-white mb-6">カスタマー管理</h2>
+            
+            {/* Customer Search Filters */}
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-6">
+              <h3 className="text-lg font-semibold text-white mb-4">検索フィルター</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">名前</label>
+                  <input
+                    type="text"
+                    value={customerSearchFilters.name}
+                    onChange={(e) => setCustomerSearchFilters({ ...customerSearchFilters, name: e.target.value })}
+                    placeholder="名前で検索"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">メールアドレス</label>
+                  <input
+                    type="email"
+                    value={customerSearchFilters.email}
+                    onChange={(e) => setCustomerSearchFilters({ ...customerSearchFilters, email: e.target.value })}
+                    placeholder="メールで検索"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">電話番号</label>
+                  <input
+                    type="tel"
+                    value={customerSearchFilters.phone}
+                    onChange={(e) => setCustomerSearchFilters({ ...customerSearchFilters, phone: e.target.value })}
+                    placeholder="電話番号で検索"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                </div>
+              </div>
+              <div className="mt-4">
+                <button
+                  onClick={() => setCustomerSearchFilters({ name: '', email: '', phone: '' })}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  フィルタークリア
+                </button>
+              </div>
+            </div>
+
+            {/* Customer List */}
+            <div className="space-y-4">
+              {getFilteredCustomers().map((customer) => (
+                <div key={customer.id} className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-white">{customer.name}</h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <p className="text-sm font-medium text-gray-400 mb-1">連絡先</p>
+                          <div className="flex items-center gap-2 text-sm text-gray-300 mb-1">
+                            <Mail className="w-4 h-4" />
+                            {customer.email}
+                          </div>
+                          {customer.phone && (
+                            <div className="flex items-center gap-2 text-sm text-gray-300">
+                              <Phone className="w-4 h-4" />
+                              {customer.phone}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {customer.address && (
+                          <div>
+                            <p className="text-sm font-medium text-gray-400 mb-1">住所</p>
+                            <div className="flex items-start gap-2">
+                              <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                              <div>
+                                <p className="text-gray-300">〒{customer.address.postalCode}</p>
+                                <p className="text-gray-300">
+                                  {customer.address.prefecture} {customer.address.city}
+                                </p>
+                                <p className="text-gray-300">{customer.address.detail}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-500">
+                            登録日: {new Date(customer.id.split('-')[1] ? parseInt(customer.id.split('-')[1]) : Date.now()).toLocaleDateString('ja-JP')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                            アクティブ
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {getFilteredCustomers().length === 0 && (
+                <div className="text-center py-12">
+                  <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-400">
+                    {customers.length === 0 ? 'カスタマーが登録されていません' : '検索条件に一致するカスタマーが見つかりません'}
+                  </p>
                 </div>
               )}
             </div>
