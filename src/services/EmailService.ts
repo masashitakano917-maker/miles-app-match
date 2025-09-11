@@ -29,96 +29,52 @@ export class EmailService {
   /** 汎用：payload をそのまま投げられる版 */
   static async send(payload: SendEmailPayload): Promise<boolean> {
     try {
-      // SendGrid設定確認
-      const apiKey = import.meta.env.VITE_SENDGRID_API_KEY;
       const fromEmail = import.meta.env.VITE_FROM_EMAIL || 'no-reply@openframe.inc';
       const fromName = import.meta.env.VITE_FROM_NAME || 'Miles マッチングプラットフォーム';
       const defaultTo = import.meta.env.VITE_DEFAULT_TO_EMAIL || 'of@thisismerci.com';
 
       console.log('📧 [EmailService] 設定確認:');
-      console.log(`   APIキー: ${apiKey ? '設定済み' : '未設定'}`);
       console.log(`   送信者: ${fromName} <${fromEmail}>`);
       console.log(`   宛先: ${Array.isArray(payload.to) ? payload.to[0] : (payload.to || defaultTo)}`);
       console.log(`   件名: ${payload.subject}`);
 
-      if (!apiKey || apiKey === 'your_sendgrid_api_key_here') {
-        console.log('⚠️ [EmailService] SendGrid APIキーが未設定のため、シミュレーションモードで動作');
-        await this.simulateEmailSending(payload, fromEmail, fromName, defaultTo);
-        return true;
-      }
-
-      // SendGrid Web API を使用した実際のメール送信
+      // Cloudflare Pages Function を使用したメール送信
       const emailData = {
-        personalizations: [
-          {
-            to: [
-              {
-                email: Array.isArray(payload.to) ? payload.to[0] : (payload.to || defaultTo),
-                name: payload.name || ''
-              }
-            ],
-            subject: payload.subject
-          }
-        ],
-        from: {
-          email: fromEmail,
-          name: fromName
-        },
-        content: [
-          {
-            type: 'text/html',
-            value: payload.html || this.generateDefaultTemplate(payload)
-          }
-        ]
+        to: Array.isArray(payload.to) ? payload.to[0] : (payload.to || defaultTo),
+        subject: payload.subject,
+        html: payload.html || this.generateDefaultTemplate(payload),
+        replyEmail: payload.replyEmail,
+        name: payload.name,
+        email: payload.email,
+        message: payload.message
       };
 
-      // 返信先設定
-      if (payload.replyEmail) {
-        emailData.reply_to = {
-          email: payload.replyEmail
-        };
-      }
+      console.log('📧 [EmailService] Cloudflare Pages Functionでメール送信中...');
 
-      console.log('📧 [EmailService] SendGrid Web APIでメール送信中...');
-
-      const response = await fetch('/sendgrid-api/v3/mail/send', {
+      const response = await fetch('/api/send-email', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(emailData)
       });
 
-      console.log(`📧 [EmailService] SendGrid APIレスポンス: ${response.status}`);
+      console.log(`📧 [EmailService] Cloudflare Function レスポンス: ${response.status}`);
 
       if (response.ok) {
         console.log('✅ [EmailService] メール送信成功！');
-        console.log(`   実際に ${emailData.personalizations[0].to[0].email} にメールが送信されました`);
+        console.log(`   実際に ${emailData.to} にメールが送信されました`);
         return true;
       } else {
         const errorText = await response.text();
-        console.error('❌ [EmailService] SendGrid APIエラー:', response.status, errorText);
+        console.error('❌ [EmailService] Cloudflare Function エラー:', response.status, errorText);
         
         // APIエラーの詳細を解析
         try {
           const errorData = JSON.parse(errorText);
           console.error('❌ [EmailService] エラー詳細:', errorData);
-          
-          if (errorData.errors) {
-            errorData.errors.forEach((error: any, index: number) => {
-              console.error(`   エラー${index + 1}: ${error.message} (${error.field})`);
-            });
-          }
         } catch (e) {
           console.error('❌ [EmailService] エラーレスポンス解析失敗:', errorText);
-        }
-        
-        // 特定のエラーの場合はシミュレーションモードにフォールバック
-        if (response.status === 403 || response.status === 401) {
-          console.log('⚠️ [EmailService] 認証エラーのため、シミュレーションモードで動作');
-          await this.simulateEmailSending(payload, fromEmail, fromName, defaultTo);
-          return true;
         }
         
         return false;
@@ -126,17 +82,6 @@ export class EmailService {
 
     } catch (error: any) {
       console.error("❌ [EmailService] メール送信エラー:", error);
-      
-      // ネットワークエラーの場合はシミュレーションモードにフォールバック
-      if (error.name === 'TypeError' || error.message.includes('fetch') || error.message.includes('CORS')) {
-        console.log('⚠️ [EmailService] ネットワーク/CORS制限のため、シミュレーションモードで動作');
-        const fromEmail = import.meta.env.VITE_FROM_EMAIL || 'no-reply@openframe.inc';
-        const fromName = import.meta.env.VITE_FROM_NAME || 'Miles マッチングプラットフォーム';
-        const defaultTo = import.meta.env.VITE_DEFAULT_TO_EMAIL || 'of@thisismerci.com';
-        await this.simulateEmailSending(payload, fromEmail, fromName, defaultTo);
-        return true;
-      }
-      
       return false;
     }
   }
@@ -297,7 +242,6 @@ export class EmailService {
     config: Record<string, string>;
   } {
     const requiredVars = [
-      'VITE_SENDGRID_API_KEY',
       'VITE_FROM_EMAIL',
       'VITE_FROM_NAME',
       'VITE_DEFAULT_TO_EMAIL'
@@ -311,8 +255,7 @@ export class EmailService {
       if (!value || value.includes('your_') || value.includes('yourdomain')) {
         missingVars.push(varName);
       } else {
-        config[varName] = varName.includes('API_KEY') ? 
-          `${value.substring(0, 10)}...***設定済み***` : value;
+        config[varName] = value;
       }
     });
 

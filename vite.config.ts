@@ -6,12 +6,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/sendgrid-api': {
-        target: 'https://api.sendgrid.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/sendgrid-api/, ''),
-      },
-    },
   },
   build: {
     outDir: 'dist'
