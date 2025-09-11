@@ -48,6 +48,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [viewMode, setViewMode] = useState<'current' | 'comparison' | 'weekly' | 'monthly'>('current');
 
   // Data states
   const [professionals, setProfessionals] = useState<Professional[]>([]);
