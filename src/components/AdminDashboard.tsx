@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import type { User, Order, Professional } from '../types';
-import { 
-  Users, 
-  ShoppingCart, 
-  TrendingUp, 
-  Calendar, 
-  LogOut, 
-  Eye, 
-  Edit, 
-  Trash2, 
+import type { User, Order, Professional, Label } from '../types';
+import {
+  Users,
+  ShoppingCart,
+  TrendingUp,
+  Calendar,
+  LogOut,
+  Eye,
+  Edit,
+  Trash2,
   Plus,
   Save,
   X,
@@ -39,20 +39,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showManualAssign, setShowManualAssign] = useState(false);
   const [selectedOrderForAssign, setSelectedOrderForAssign] = useState<Order | null>(null);
   const [selectedProfessionalForAssign, setSelectedProfessionalForAssign] = useState<string>('');
-  
+
   // Customer management state
   const [customers, setCustomers] = useState<any[]>([]);
-  
+
   // Label management state
-  const [availableLabels, setAvailableLabels] = useState<any[]>([]);
-  const [selectedLabels, setSelectedLabels] = useState<any[]>([]);
+  const [availableLabels, setAvailableLabels] = useState<Label[]>([]);
+  const [selectedLabels, setSelectedLabels] = useState<Label[]>([]);
   const [showLabelForm, setShowLabelForm] = useState(false);
-  const [editingLabel, setEditingLabel] = useState<any>(null);
+  const [editingLabel, setEditingLabel] = useState<Label | null>(null);
   const [labelForm, setLabelForm] = useState({
     name: '',
     category: ''
   });
-  
+
   // Analytics state
   const [viewMode, setViewMode] = useState<'current' | 'comparison'>('current');
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
@@ -93,7 +93,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     bio: '',
     equipment: '',
     experience: '',
-    labels: [] as any[],
+    labels: [] as Label[],
     address: {
       postalCode: '',
       prefecture: '',
@@ -105,14 +105,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   // Load data on mount
   useEffect(() => {
     loadData();
-    
+
     // Listen for order updates
     const handleOrdersUpdate = (event: CustomEvent) => {
       setOrders(event.detail);
     };
-    
+
     window.addEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
-    
+
     return () => {
       window.removeEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
     };
@@ -123,7 +123,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     const loadedProfessionals = DataService.loadProfessionals();
     const loadedCustomers = DataService.loadCustomers();
     const loadedLabels = DataService.loadLabels();
-    
+
     setOrders(loadedOrders);
     setProfessionals(loadedProfessionals);
     setCustomers(loadedCustomers);
@@ -143,15 +143,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   };
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
-    const updatedOrders = orders.map(order => 
-      order.id === orderId 
+    const updatedOrders = orders.map(order =>
+      order.id === orderId
         ? { ...order, status: newStatus, updatedAt: new Date() }
         : order
     );
-    
+
     setOrders(updatedOrders);
     DataService.saveOrders(updatedOrders);
-    
+
     console.log(`✅ 注文 ${orderId} のステータスを ${newStatus} に更新しました`);
   };
 
@@ -172,17 +172,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const handleManualAssign = async () => {
     if (!selectedOrderForAssign || !selectedProfessionalForAssign) return;
 
-    const updatedOrders = orders.map(order => 
-      order.id === selectedOrderForAssign.id 
-        ? { 
-            ...order, 
+    const updatedOrders = orders.map(order =>
+      order.id === selectedOrderForAssign.id
+        ? {
+            ...order,
             status: 'matched' as const,
             assignedProfessionalId: selectedProfessionalForAssign,
             updatedAt: new Date()
           }
         : order
     );
-    
+
     setOrders(updatedOrders);
     DataService.saveOrders(updatedOrders);
 
@@ -216,6 +216,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         detail: ''
       }
     });
+    // 新規は選択済みラベルを空にする
+    setSelectedLabels([]);
     setShowProfessionalForm(true);
   };
 
@@ -229,7 +231,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       bio: professional.bio || '',
       equipment: professional.equipment || '',
       experience: professional.experience || '',
-      labels: [],
+      labels: professional.labels || [],
       address: professional.address || {
         postalCode: '',
         prefecture: '',
@@ -237,13 +239,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         detail: ''
       }
     });
-    setShowProfessionalForm(true);
+    // 既存のラベルを初期選択に反映
     setSelectedLabels(professional.labels || []);
+    setShowProfessionalForm(true);
   };
 
   const handleSaveProfessional = async () => {
     const isNew = !editingProfessional;
-    
+
     const professionalData: Professional = {
       id: editingProfessional?.id || `professional-${Date.now()}`,
       name: professionalForm.name,
@@ -265,7 +268,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     if (isNew) {
       updatedProfessionals = [...professionals, professionalData];
     } else {
-      updatedProfessionals = professionals.map(p => 
+      updatedProfessionals = professionals.map(p =>
         p.id === editingProfessional!.id ? professionalData : p
       );
     }
@@ -277,6 +280,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     await NotificationService.sendProfessionalRegistrationNotification(professionalData, isNew);
 
     setShowProfessionalForm(false);
+    setSelectedLabels([]); // 保存後はクリア
     console.log(`✅ プロフェッショナルを${isNew ? '追加' : '更新'}しました`);
   };
 
@@ -298,14 +302,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  // Label management functions
+  // ===== ラベル管理（モーダル用） =====
   const handleAddLabel = () => {
     setEditingLabel(null);
     setLabelForm({ name: '', category: '' });
     setShowLabelForm(true);
   };
 
-  const handleEditLabel = (label: any) => {
+  const handleEditLabel = (label: Label) => {
     setEditingLabel(label);
     setLabelForm({ name: label.name, category: label.category });
     setShowLabelForm(true);
@@ -313,7 +317,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
   const handleSaveLabel = () => {
     const isNew = !editingLabel;
-    const labelData = {
+    const labelData: Label = {
       id: editingLabel?.id || `label-${Date.now()}`,
       name: labelForm.name,
       category: labelForm.category
@@ -323,9 +327,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     if (isNew) {
       updatedLabels = [...availableLabels, labelData];
     } else {
-      updatedLabels = availableLabels.map(l => 
-        l.id === editingLabel.id ? labelData : l
-      );
+      updatedLabels = availableLabels.map(l => (l.id === editingLabel!.id ? labelData : l));
     }
 
     setAvailableLabels(updatedLabels);
@@ -341,6 +343,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       DataService.saveLabels(updatedLabels);
       console.log(`✅ ラベル ${labelId} を削除しました`);
     }
+  };
+
+  // ===== プロ登録フォーム内：ラベル選択 =====
+  const handlePickLabel = (label: Label) => {
+    if (selectedLabels.find(l => l.id === label.id)) return;
+    setSelectedLabels(prev => [...prev, label]);
   };
 
   const handleRemoveLabel = (labelId: string) => {
@@ -388,8 +396,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     const serviceNames: { [key: string]: { [key: string]: string } } = {
       'photo-service': {
         'real-estate': '不動産撮影',
-        'portrait': 'ポートレート撮影',
-        'food': 'フード撮影'
+        portrait: 'ポートレート撮影',
+        food: 'フード撮影'
       },
       'cleaning-service': {
         '1ldk': '1LDK清掃',
@@ -397,9 +405,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         '3ldk': '3LDK清掃'
       },
       'staff-service': {
-        'translation': '翻訳',
-        'interpretation': '通訳',
-        'companion': 'イベントコンパニオン'
+        translation: '翻訳',
+        interpretation: '通訳',
+        companion: 'イベントコンパニオン'
       }
     };
     return serviceNames[serviceId]?.[planId] || 'サービス';
@@ -408,14 +416,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const getPlanPrice = (planId: string) => {
     const prices: { [key: string]: number } = {
       'real-estate': 15000,
-      'portrait': 12000,
-      'food': 18000,
+      portrait: 12000,
+      food: 18000,
       '1ldk': 8000,
       '2ldk': 12000,
       '3ldk': 16000,
-      'translation': 5000,
-      'interpretation': 8000,
-      'companion': 15000
+      translation: 5000,
+      interpretation: 8000,
+      companion: 15000
     };
     return prices[planId] || 0;
   };
@@ -516,7 +524,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         {activeTab === 'overview' && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">システム概要</h2>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <h3 className="text-lg font-semibold text-white mb-4">最近の注文</h3>
@@ -561,7 +569,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         {activeTab === 'orders' && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">注文管理</h2>
-            
+
             <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-700">
@@ -668,7 +676,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 新規追加
               </button>
             </div>
-            
+
             <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-700">
@@ -710,11 +718,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                           ⭐ {professional.rating}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            professional.isActive 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              professional.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}
+                          >
                             {professional.isActive ? 'アクティブ' : '非アクティブ'}
                           </span>
                         </td>
@@ -756,7 +764,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 新規追加
               </button>
             </div>
-            
+
             <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-700">
@@ -811,7 +819,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         {activeTab === 'customers' && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">カスタマー管理</h2>
-            
+
             <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-700">
@@ -850,10 +858,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                           {customer.phone || '未設定'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {customer.address ? 
-                            `${customer.address.prefecture} ${customer.address.city}` : 
-                            '未設定'
-                          }
+                          {customer.address
+                            ? `${customer.address.prefecture} ${customer.address.city}`
+                            : '未設定'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                           {customer.createdAt ? new Date(customer.createdAt).toLocaleDateString('ja-JP') : '-'}
@@ -873,7 +880,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   </tbody>
                 </table>
               </div>
-              
+
               {customers.length === 0 && (
                 <div className="text-center py-12">
                   <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -888,7 +895,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         {activeTab === 'analytics' && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">分析データ</h2>
-            
+
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 mb-8">
               <h3 className="text-lg font-semibold text-white mb-4">フィルター</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -897,7 +904,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="date"
                     value={customDateRange.startDate}
-                    onChange={(e) => setCustomDateRange({...customDateRange, startDate: e.target.value})}
+                    onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -906,7 +913,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="date"
                     value={customDateRange.endDate}
-                    onChange={(e) => setCustomDateRange({...customDateRange, endDate: e.target.value})}
+                    onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -918,7 +925,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   >
                     {serviceOptions.map(option => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -927,11 +936,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <select
                     multiple
                     value={selectedDays.map(String)}
-                    onChange={(e) => setSelectedDays(Array.from(e.target.selectedOptions, option => parseInt(option.value)))}
+                    onChange={(e) =>
+                      setSelectedDays(Array.from(e.target.selectedOptions, option => parseInt(option.value)))
+                    }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   >
                     {dayOptions.map(option => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -958,14 +971,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <h4 className="text-sm font-medium text-gray-400 mb-2">完了率</h4>
                 <p className="text-2xl font-bold text-white">
-                  {currentAnalytics.totalOrders > 0 
+                  {currentAnalytics.totalOrders > 0
                     ? Math.round((currentAnalytics.completedOrders / currentAnalytics.totalOrders) * 100)
-                    : 0}%
+                    : 0}
+                  %
                 </p>
               </div>
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <h4 className="text-sm font-medium text-gray-400 mb-2">平均注文額</h4>
-                <p className="text-2xl font-bold text-white">¥{Math.round(currentAnalytics.averageOrderValue).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-white">
+                  ¥{Math.round(currentAnalytics.averageOrderValue).toLocaleString()}
+                </p>
               </div>
             </div>
           </div>
@@ -978,14 +994,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           <div className="bg-gray-800 rounded-xl max-w-2xl w-full p-6 border border-gray-700">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-semibold text-white">注文詳細</h3>
-              <button
-                onClick={() => setShowOrderDetail(false)}
-                className="text-gray-400 hover:text-white"
-              >
+              <button onClick={() => setShowOrderDetail(false)} className="text-gray-400 hover:text-white">
                 <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <h4 className="text-lg font-semibold text-white mb-2">基本情報</h4>
@@ -1030,8 +1043,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               <div>
                 <h4 className="text-lg font-semibold text-white mb-2">作業場所</h4>
                 <p className="text-white text-sm">
-                  〒{selectedOrder.address.postalCode}<br />
-                  {selectedOrder.address.prefecture} {selectedOrder.address.city}<br />
+                  〒{selectedOrder.address.postalCode}
+                  <br />
+                  {selectedOrder.address.prefecture} {selectedOrder.address.city}
+                  <br />
                   {selectedOrder.address.detail}
                 </p>
               </div>
@@ -1043,7 +1058,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 </div>
               )}
             </div>
-            
+
             <div className="flex justify-end mt-6">
               <button
                 onClick={() => setShowOrderDetail(false)}
@@ -1062,39 +1077,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-semibold text-white">手動アサイン</h3>
-              <button
-                onClick={() => setShowManualAssign(false)}
-                className="text-gray-400 hover:text-white"
-              >
+              <button onClick={() => setShowManualAssign(false)} className="text-gray-400 hover:text-white">
                 <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             <div className="mb-6">
-              <p className="text-gray-300 mb-4">
-                注文ID: {selectedOrderForAssign.id}
-              </p>
+              <p className="text-gray-300 mb-4">注文ID: {selectedOrderForAssign.id}</p>
               <p className="text-gray-300 mb-4">
                 サービス: {getServiceName(selectedOrderForAssign.serviceId, selectedOrderForAssign.planId)}
               </p>
-              
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                プロフェッショナルを選択
-              </label>
+
+              <label className="block text-sm font-medium text-gray-300 mb-2">プロフェッショナルを選択</label>
               <select
                 value={selectedProfessionalForAssign}
                 onChange={(e) => setSelectedProfessionalForAssign(e.target.value)}
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
               >
                 <option value="">選択してください</option>
-                {professionals.filter(p => p.isActive).map(professional => (
-                  <option key={professional.id} value={professional.id}>
-                    {professional.name} - {professional.labels?.map(l => l.name).join(', ')}
-                  </option>
-                ))}
+                {professionals
+                  .filter(p => p.isActive)
+                  .map(professional => (
+                    <option key={professional.id} value={professional.id}>
+                      {professional.name} - {professional.labels?.map(l => l.name).join(', ')}
+                    </option>
+                  ))}
               </select>
             </div>
-            
+
             <div className="flex justify-end gap-4">
               <button
                 onClick={() => setShowManualAssign(false)}
@@ -1119,24 +1129,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-white">
-                {editingLabel ? 'ラベル編集' : 'ラベル追加'}
-              </h3>
-              <button
-                onClick={() => setShowLabelForm(false)}
-                className="text-gray-400 hover:text-white"
-              >
+              <h3 className="text-xl font-semibold text-white">{editingLabel ? 'ラベル編集' : 'ラベル追加'}</h3>
+              <button onClick={() => setShowLabelForm(false)} className="text-gray-400 hover:text-white">
                 <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">ラベル名</label>
                 <input
                   type="text"
                   value={labelForm.name}
-                  onChange={(e) => setLabelForm({...labelForm, name: e.target.value})}
+                  onChange={(e) => setLabelForm({ ...labelForm, name: e.target.value })}
                   className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   placeholder="例: 不動産撮影"
                 />
@@ -1146,13 +1151,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 <input
                   type="text"
                   value={labelForm.category}
-                  onChange={(e) => setLabelForm({...labelForm, category: e.target.value})}
+                  onChange={(e) => setLabelForm({ ...labelForm, category: e.target.value })}
                   className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   placeholder="例: 写真撮影"
                 />
               </div>
             </div>
-            
+
             <div className="flex justify-end gap-4 mt-6">
               <button
                 onClick={() => setShowLabelForm(false)}
@@ -1180,14 +1185,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               <h3 className="text-xl font-semibold text-white">
                 {editingProfessional ? 'プロフェッショナル編集' : 'プロフェッショナル追加'}
               </h3>
-              <button
-                onClick={() => setShowProfessionalForm(false)}
-                className="text-gray-400 hover:text-white"
-              >
+              <button onClick={() => setShowProfessionalForm(false)} className="text-gray-400 hover:text-white">
                 <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1195,7 +1197,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="text"
                     value={professionalForm.name}
-                    onChange={(e) => setProfessionalForm({...professionalForm, name: e.target.value})}
+                    onChange={(e) => setProfessionalForm({ ...professionalForm, name: e.target.value })}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -1204,7 +1206,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="email"
                     value={professionalForm.email}
-                    onChange={(e) => setProfessionalForm({...professionalForm, email: e.target.value})}
+                    onChange={(e) => setProfessionalForm({ ...professionalForm, email: e.target.value })}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -1213,7 +1215,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="tel"
                     value={professionalForm.phone}
-                    onChange={(e) => setProfessionalForm({...professionalForm, phone: e.target.value})}
+                    onChange={(e) => setProfessionalForm({ ...professionalForm, phone: e.target.value })}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -1222,7 +1224,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="password"
                     value={professionalForm.password}
-                    onChange={(e) => setProfessionalForm({...professionalForm, password: e.target.value})}
+                    onChange={(e) => setProfessionalForm({ ...professionalForm, password: e.target.value })}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -1233,7 +1235,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 <textarea
                   rows={3}
                   value={professionalForm.bio}
-                  onChange={(e) => setProfessionalForm({...professionalForm, bio: e.target.value})}
+                  onChange={(e) => setProfessionalForm({ ...professionalForm, bio: e.target.value })}
                   className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                 />
               </div>
@@ -1244,10 +1246,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="text"
                     value={professionalForm.address.postalCode}
-                    onChange={(e) => setProfessionalForm({
-                      ...professionalForm, 
-                      address: {...professionalForm.address, postalCode: e.target.value}
-                    })}
+                    onChange={(e) =>
+                      setProfessionalForm({
+                        ...professionalForm,
+                        address: { ...professionalForm.address, postalCode: e.target.value }
+                      })
+                    }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -1256,22 +1260,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="text"
                     value={professionalForm.address.prefecture}
-                    onChange={(e) => setProfessionalForm({
-                      ...professionalForm, 
-                      address: {...professionalForm.address, prefecture: e.target.value}
-                    })}
+                    onChange={(e) =>
+                      setProfessionalForm({
+                        ...professionalForm,
+                        address: { ...professionalForm.address, prefecture: e.target.value }
+                      })
+                    }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">市区町村</label>
+                  <label className="block textsm font-medium text-gray-300 mb-2">市区町村</label>
                   <input
                     type="text"
                     value={professionalForm.address.city}
-                    onChange={(e) => setProfessionalForm({
-                      ...professionalForm, 
-                      address: {...professionalForm.address, city: e.target.value}
-                    })}
+                    onChange={(e) =>
+                      setProfessionalForm({
+                        ...professionalForm,
+                        address: { ...professionalForm.address, city: e.target.value }
+                      })
+                    }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -1280,10 +1288,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="text"
                     value={professionalForm.address.detail}
-                    onChange={(e) => setProfessionalForm({
-                      ...professionalForm, 
-                      address: {...professionalForm.address, detail: e.target.value}
-                    })}
+                    onChange={(e) =>
+                      setProfessionalForm({
+                        ...professionalForm,
+                        address: { ...professionalForm.address, detail: e.target.value }
+                      })
+                    }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -1297,7 +1307,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     <p className="text-sm text-gray-400 mb-2">選択済みラベル:</p>
                     <div className="flex flex-wrap gap-2">
                       {selectedLabels.map((label) => (
-                        <div key={label.id} className="flex items-center gap-2 bg-orange-900 bg-opacity-30 border border-orange-700 px-3 py-1 rounded-lg">
+                        <div
+                          key={label.id}
+                          className="flex items-center gap-2 bg-orange-900 bg-opacity-30 border border-orange-700 px-3 py-1 rounded-lg"
+                        >
                           <span className="text-orange-300 text-sm">{label.name}</span>
                           <button
                             type="button"
@@ -1324,7 +1337,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                           <button
                             key={label.id}
                             type="button"
-                            onClick={() => handleAddLabel(label)}
+                            onClick={() => handlePickLabel(label)}
                             className="text-left p-2 bg-gray-700 hover:bg-gray-600 rounded border border-gray-600 hover:border-orange-500 transition-colors"
                           >
                             <div className="text-white text-sm font-medium">{label.name}</div>
@@ -1336,7 +1349,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end gap-4 mt-6">
               <button
                 onClick={() => setShowProfessionalForm(false)}
