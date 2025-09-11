@@ -50,6 +50,7 @@ export class SequentialMatchingService {
 
       this.sessions.set(order.id, session);
       console.log(`📋 ${eligibleProfessionals.length}名のプロフェッショナルが対象`);
+      console.log(`📍 距離順リスト:`, eligibleProfessionals.map(p => `${p.professional.name}: ${p.distance}km`));
 
       // 最初のプロに通知
       await this.notifyNextProfessional(session);
@@ -70,7 +71,7 @@ export class SequentialMatchingService {
     const { professional, distance } = session.eligibleProfessionals[session.currentIndex];
     session.notifiedProfessionals.add(professional.id);
 
-    console.log(`📧 通知送信: ${professional.name} (距離: ${distance}km)`);
+    console.log(`📧 通知送信 [${session.currentIndex + 1}/${session.eligibleProfessionals.length}]: ${professional.name} (距離: ${distance}km)`);
 
     // プロフェッショナルの新規依頼リストに追加（応募可能状態にする）
     this.addOrderToProfessional(professional.id, session.orderId);
@@ -78,7 +79,12 @@ export class SequentialMatchingService {
     // メール通知送信
     const order = this.getOrderById(session.orderId);
     if (order) {
-      await NotificationService.sendProfessionalJobNotification(order, this.getPlanFromOrder(order), professional);
+      try {
+        await NotificationService.sendProfessionalJobNotification(order, this.getPlanFromOrder(order), professional);
+        console.log(`✅ メール送信完了: ${professional.name}`);
+      } catch (error) {
+        console.error(`❌ メール送信エラー (${professional.name}):`, error);
+      }
     }
 
     // 次のインデックスに進める
@@ -87,10 +93,12 @@ export class SequentialMatchingService {
     // 7分後に次のプロに通知するタイマー設定
     session.timerId = setTimeout(async () => {
       if (session.isActive) {
-        console.log(`⏰ ${this.WAIT_TIME_MINUTES}分経過 - 次のプロに通知`);
+        console.log(`⏰ ${this.WAIT_TIME_MINUTES}分経過 - 次のプロに通知 (現在: ${session.currentIndex}/${session.eligibleProfessionals.length})`);
         await this.notifyNextProfessional(session);
       }
     }, this.WAIT_TIME_MINUTES * 60 * 1000);
+    
+    console.log(`⏱️ ${this.WAIT_TIME_MINUTES}分タイマー開始`);
   }
 
   // プロフェッショナルが応募
@@ -171,21 +179,38 @@ export class SequentialMatchingService {
     order: Order, 
     allProfessionals: Professional[]
   ): Promise<Array<{ professional: Professional; distance: number }>> {
+    console.log(`🔍 プロフェッショナル検索開始: ${allProfessionals.length}名中から検索`);
+    
     // ラベルでフィルタリング
     const eligibleBySkill = this.filterByLabels(order, allProfessionals);
+    console.log(`🏷️ ラベルフィルタリング結果: ${eligibleBySkill.length}名`);
     
     if (eligibleBySkill.length === 0) {
+      console.log('❌ ラベルに該当するプロフェッショナルが見つかりません');
       return [];
     }
 
     // 距離でソートし、80km以内に制限
-    const sortedByDistance = await LocationService.findProfessionalsWithinRadius(
-      order.address,
-      eligibleBySkill,
-      this.MAX_DISTANCE_KM
-    );
-
-    return sortedByDistance;
+    try {
+      console.log(`📍 距離計算開始: ${eligibleBySkill.length}名の距離を計算中...`);
+      const sortedByDistance = await LocationService.findProfessionalsWithinRadius(
+        order.address,
+        eligibleBySkill,
+        this.MAX_DISTANCE_KM
+      );
+      
+      console.log(`📏 距離フィルタリング結果: ${sortedByDistance.length}名 (${this.MAX_DISTANCE_KM}km以内)`);
+      sortedByDistance.forEach((item, index) => {
+        console.log(`   ${index + 1}. ${item.professional.name}: ${item.distance}km`);
+      });
+      
+      return sortedByDistance;
+    } catch (error) {
+      console.error('❌ 距離計算エラー:', error);
+      // 距離計算に失敗した場合は、ラベルフィルタリング結果をそのまま返す
+      console.log('⚠️ 距離計算失敗のため、ラベルフィルタリング結果のみ使用');
+      return eligibleBySkill.map(professional => ({ professional, distance: Infinity }));
+    }
   }
 
   // ラベルでフィルタリング
@@ -193,16 +218,24 @@ export class SequentialMatchingService {
     const allLabels = DataService.loadLabels();
     const relevantLabels = this.findRelevantLabels(order.serviceId, order.planId, allLabels);
     
+    console.log(`🔍 必要ラベル:`, relevantLabels.map(l => l.name));
+    
     return professionals.filter(pro => {
       if (!pro.isActive || !pro.labels || pro.labels.length === 0) return false;
       
-      return relevantLabels.some(relevantLabel => 
+      const hasMatchingLabel = relevantLabels.some(relevantLabel => 
         pro.labels.some(proLabel => 
           proLabel.id === relevantLabel.id || 
           proLabel.name === relevantLabel.name ||
           this.isLabelMatch(proLabel, relevantLabel)
         )
       );
+      
+      if (hasMatchingLabel) {
+        console.log(`✅ ${pro.name}: ラベルマッチ (${pro.labels.map(l => l.name).join(', ')})`);
+      }
+      
+      return hasMatchingLabel;
     });
   }
 
