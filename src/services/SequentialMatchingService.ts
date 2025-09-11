@@ -22,6 +22,7 @@ export class SequentialMatchingService {
   // 段階的マッチングを開始
   static async startSequentialMatching(order: Order): Promise<void> {
     console.log(`🎯 段階的マッチング開始: ${order.id}`);
+    console.log(`📍 注文住所: ${order.address.prefecture} ${order.address.city} ${order.address.detail}`);
 
     try {
       // 既存セッションがあれば停止
@@ -31,6 +32,7 @@ export class SequentialMatchingService {
 
       // 該当プロフェッショナルを距離順で取得
       const allProfessionals = DataService.loadProfessionals();
+      console.log(`👥 全プロフェッショナル数: ${allProfessionals.length}`);
       const eligibleProfessionals = await this.findEligibleProfessionalsByDistance(order, allProfessionals);
 
       if (eligibleProfessionals.length === 0) {
@@ -52,7 +54,7 @@ export class SequentialMatchingService {
       console.log(`📋 ${eligibleProfessionals.length}名のプロフェッショナルが対象`);
       console.log(`📍 距離順リスト:`, eligibleProfessionals.map(p => `${p.professional.name}: ${p.distance}km`));
 
-      // 最初のプロに通知
+      // 最初のプロに通知（1人だけ）
       await this.notifyNextProfessional(session);
 
     } catch (error) {
@@ -184,18 +186,42 @@ export class SequentialMatchingService {
     // ラベルでフィルタリング
     const eligibleBySkill = this.filterByLabels(order, allProfessionals);
     console.log(`🏷️ ラベルフィルタリング結果: ${eligibleBySkill.length}名`);
+    eligibleBySkill.forEach(pro => {
+      console.log(`   - ${pro.name}: ${pro.labels?.map(l => l.name).join(', ')}`);
+      if (pro.address) {
+        console.log(`     住所: ${pro.address.prefecture} ${pro.address.city} ${pro.address.detail}`);
+      } else {
+        console.log(`     住所: 未設定`);
+      }
+    });
     
     if (eligibleBySkill.length === 0) {
       console.log('❌ ラベルに該当するプロフェッショナルが見つかりません');
       return [];
     }
 
-    // 距離でソートし、80km以内に制限
+    // 住所が設定されていないプロを除外
+    const professionalsWithAddress = eligibleBySkill.filter(pro => {
+      if (!pro.address || !pro.address.prefecture || !pro.address.city) {
+        console.log(`⚠️ ${pro.name}: 住所が未設定のためスキップ`);
+        return false;
+      }
+      return true;
+    });
+    
+    console.log(`📍 住所設定済みプロ: ${professionalsWithAddress.length}名`);
+    
+    if (professionalsWithAddress.length === 0) {
+      console.log('❌ 住所が設定されたプロフェッショナルが見つかりません');
+      return [];
+    }
+
+    // 距離計算とソート
     try {
-      console.log(`📍 距離計算開始: ${eligibleBySkill.length}名の距離を計算中...`);
+      console.log(`📍 距離計算開始: ${professionalsWithAddress.length}名の距離を計算中...`);
       const sortedByDistance = await LocationService.findProfessionalsWithinRadius(
         order.address,
-        eligibleBySkill,
+        professionalsWithAddress,
         this.MAX_DISTANCE_KM
       );
       
@@ -207,9 +233,9 @@ export class SequentialMatchingService {
       return sortedByDistance;
     } catch (error) {
       console.error('❌ 距離計算エラー:', error);
-      // 距離計算に失敗した場合は、ラベルフィルタリング結果をそのまま返す
-      console.log('⚠️ 距離計算失敗のため、ラベルフィルタリング結果のみ使用');
-      return eligibleBySkill.map(professional => ({ professional, distance: Infinity }));
+      // 距離計算に失敗した場合は、住所設定済みプロをそのまま返す（距離は無限大）
+      console.log('⚠️ 距離計算失敗のため、住所設定済みプロを距離無限大で返す');
+      return professionalsWithAddress.map(professional => ({ professional, distance: Infinity }));
     }
   }
 

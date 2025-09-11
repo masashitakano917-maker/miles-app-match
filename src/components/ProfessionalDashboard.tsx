@@ -58,6 +58,37 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
           detail: ''
         }
       });
+    } else {
+      console.error('❌ プロフェッショナルデータが見つかりません:', user.id);
+      // デフォルトデータを設定
+      const defaultProfessional: Professional = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: 'professional',
+        labels: [],
+        isActive: true,
+        completedJobs: 0,
+        rating: 5.0,
+        phone: user.phone,
+        address: user.address
+      };
+      setProfessionalData(defaultProfessional);
+      setEditFormData({
+        name: defaultProfessional.name,
+        email: defaultProfessional.email,
+        phone: defaultProfessional.phone || '',
+        password: '',
+        bio: '',
+        equipment: '',
+        experience: '',
+        address: defaultProfessional.address || {
+          postalCode: '',
+          prefecture: '',
+          city: '',
+          detail: ''
+        }
+      });
     }
   }, [user.id]);
 
@@ -250,7 +281,20 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
   if (!professionalData) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white">プロフェッショナルデータを読み込み中...</div>
+        <div className="text-center">
+          <div className="text-white text-lg mb-4">プロフェッショナルデータを読み込み中...</div>
+          <div className="text-gray-400 text-sm">
+            ユーザーID: {user.id}<br/>
+            名前: {user.name}<br/>
+            メール: {user.email}
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+          >
+            再読み込み
+          </button>
+        </div>
       </div>
     );
   }
