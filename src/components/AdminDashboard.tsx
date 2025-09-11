@@ -343,12 +343,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  const handleAddLabel = (label: any) => {
-    if (!selectedLabels.find(l => l.id === label.id)) {
-      setSelectedLabels([...selectedLabels, label]);
-    }
-  };
-
   const handleRemoveLabel = (labelId: string) => {
     setSelectedLabels(selectedLabels.filter(l => l.id !== labelId));
   };
