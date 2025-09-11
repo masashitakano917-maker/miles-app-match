@@ -20,8 +20,9 @@ export class LocationService {
       // Google Maps Geocoding APIを使用
       const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
       if (!apiKey) {
-        console.warn('⚠️ Google Maps API キーが設定されていません');
-        return this.getMockCoordinates();
+        const error = 'Google Maps API キーが設定されていません。環境変数 VITE_GOOGLE_MAPS_API_KEY を確認してください。';
+        console.error('❌', error);
+        throw new Error(error);
       }
 
       const response = await fetch(
@@ -29,15 +30,17 @@ export class LocationService {
       );
       
       if (!response.ok) {
-        console.error('Google Maps API リクエストエラー:', response.status);
-        return this.getMockCoordinates();
+        const error = `Google Maps API リクエストエラー: ${response.status} ${response.statusText}`;
+        console.error('❌', error);
+        throw new Error(error);
       }
 
       const data = await response.json();
       
       if (data.status !== 'OK' || !data.results || data.results.length === 0) {
-        console.warn('住所が見つかりませんでした:', data.status);
-        return this.getMockCoordinates();
+        const error = `住所が見つかりませんでした: ${data.status}${data.error_message ? ' - ' + data.error_message : ''}`;
+        console.error('❌', error);
+        throw new Error(error);
       }
 
       const location = data.results[0].geometry.location;
@@ -49,19 +52,15 @@ export class LocationService {
       console.log(`📍 座標取得完了: ${coordinates.lat}, ${coordinates.lng}`);
       return coordinates;
     } catch (error) {
-      console.error('座標取得エラー:', error);
-      return this.getMockCoordinates();
+      if (error instanceof Error) {
+        console.error('❌ 座標取得エラー:', error.message);
+        throw error;
+      } else {
+        const errorMessage = '座標取得中に予期しないエラーが発生しました';
+        console.error('❌', errorMessage, error);
+        throw new Error(errorMessage);
+      }
     }
-  }
-
-  // フォールバック用のモック座標
-  private static getMockCoordinates(): Coordinates {
-    const mockCoordinates = {
-      lat: 35.6762 + (Math.random() - 0.5) * 0.1, // 東京周辺のランダムな座標
-      lng: 139.6503 + (Math.random() - 0.5) * 0.1
-    };
-    console.log(`📍 モック座標を使用: ${mockCoordinates.lat}, ${mockCoordinates.lng}`);
-    return mockCoordinates;
   }
 
   // 2点間の距離を計算（ハーバーサイン公式）
@@ -91,32 +90,42 @@ export class LocationService {
     orderAddress: Address,
     professionals: Array<{ id: string; address?: Address; [key: string]: any }>
   ): Promise<Array<{ professional: any; distance: number }>> {
-    const orderCoords = await this.getCoordinatesFromAddress(orderAddress);
-    if (!orderCoords) {
-      console.warn('注文住所の座標取得に失敗しました');
-      return professionals.map(p => ({ professional: p, distance: 999 }));
+    try {
+      const orderCoords = await this.getCoordinatesFromAddress(orderAddress);
+      if (!orderCoords) {
+        throw new Error('注文住所の座標取得に失敗しました');
+      }
+
+      const professionalDistances = await Promise.all(
+        professionals.map(async (professional) => {
+          if (!professional.address) {
+            console.warn(`⚠️ ${professional.name || professional.id} の住所が設定されていません`);
+            return { professional, distance: Infinity }; // 住所不明の場合は無限大
+          }
+
+          try {
+            const profCoords = await this.getCoordinatesFromAddress(professional.address);
+            if (!profCoords) {
+              throw new Error('プロフェッショナルの座標取得に失敗');
+            }
+
+            const distance = this.calculateDistance(orderCoords, profCoords);
+            console.log(`📏 ${professional.name || professional.id} までの距離: ${distance}km`);
+            
+            return { professional, distance };
+          } catch (error) {
+            console.error(`❌ ${professional.name || professional.id} の座標取得エラー:`, error);
+            return { professional, distance: Infinity };
+          }
+        })
+      );
+
+      // 距離順にソート（無限大は最後に）
+      return professionalDistances.sort((a, b) => a.distance - b.distance);
+    } catch (error) {
+      console.error('❌ プロフェッショナルの距離ソートエラー:', error);
+      throw error;
     }
-
-    const professionalDistances = await Promise.all(
-      professionals.map(async (professional) => {
-        if (!professional.address) {
-          return { professional, distance: 999 }; // 住所不明の場合は最遠扱い
-        }
-
-        const profCoords = await this.getCoordinatesFromAddress(professional.address);
-        if (!profCoords) {
-          return { professional, distance: 999 };
-        }
-
-        const distance = this.calculateDistance(orderCoords, profCoords);
-        console.log(`📏 ${professional.name || professional.id} までの距離: ${distance}km`);
-        
-        return { professional, distance };
-      })
-    );
-
-    // 距離順にソート
-    return professionalDistances.sort((a, b) => a.distance - b.distance);
   }
 
   // 指定半径内のプロフェッショナルを検索
@@ -125,8 +134,13 @@ export class LocationService {
     professionals: Array<{ id: string; address?: Address; [key: string]: any }>,
     radiusKm: number = 50
   ): Promise<Array<{ professional: any; distance: number }>> {
-    const sortedProfessionals = await this.sortProfessionalsByDistance(orderAddress, professionals);
-    
-    return sortedProfessionals.filter(({ distance }) => distance <= radiusKm);
+    try {
+      const sortedProfessionals = await this.sortProfessionalsByDistance(orderAddress, professionals);
+      
+      return sortedProfessionals.filter(({ distance }) => distance <= radiusKm && distance !== Infinity);
+    } catch (error) {
+      console.error('❌ 半径内プロフェッショナル検索エラー:', error);
+      throw error;
+    }
   }
 }
