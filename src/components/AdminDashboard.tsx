@@ -1069,14 +1069,10 @@ const EmailConfigStatus: React.FC = () => {
     setIsTestingSendGrid(true);
     try {
       const success = await EmailService.sendTestEmail();
-      if (success) {
-        alert('テストメールを送信しました。受信ボックスをご確認ください。');
-      } else {
-        alert('テストメール送信に失敗しました。設定を確認してください。');
-      }
+      console.log('📧 テストメール送信結果:', success ? '成功' : '失敗');
+      console.log('📧 詳細はコンソールログをご確認ください');
     } catch (error) {
       console.error('テストメール送信エラー:', error);
-      alert('テストメール送信中にエラーが発生しました。');
     } finally {
       setIsTestingSendGrid(false);
     }
