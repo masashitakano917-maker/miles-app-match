@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Service, Plan, Order } from '../types';
+import type { User, Service, Plan, Order } from '../types';
 import { ShoppingCart, Clock, CheckCircle, XCircle, LogOut, ChevronRight, ArrowLeft, Eye, X } from 'lucide-react';
 import { NotificationService } from '../services/NotificationService';
 import { BusinessDayService } from '../services/BusinessDayService';

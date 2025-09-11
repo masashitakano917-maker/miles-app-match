@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
+import type { User } from './types';
 import AdminDashboard from './components/AdminDashboard';
 import CustomerDashboard from './components/CustomerDashboard';
 import ProfessionalDashboard from './components/ProfessionalDashboard';
 import LoginPage from './components/LoginPage';
 import SignUpPage from './components/SignUpPage';
-import { User } from './types';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);

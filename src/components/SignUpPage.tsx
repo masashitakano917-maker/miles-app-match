@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User } from '../types';
+import type { User } from '../types';
 import { UserPlus, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';

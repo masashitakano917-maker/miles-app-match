@@ -1,4 +1,4 @@
-import { Order, Plan, Professional } from '../types';
+import type { Order, Plan, Professional } from '../types';
 import { EmailService } from './EmailService';
 
 export class NotificationService {

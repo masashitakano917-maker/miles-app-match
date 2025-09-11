@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User } from '../types';
+import type { User } from '../types';
 import { LogIn, Eye, EyeOff, ChevronDown, User as UserIcon } from 'lucide-react';
 import { DataService } from '../services/DataService';
 
