@@ -49,6 +49,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [viewMode, setViewMode] = useState<'current' | 'comparison' | 'weekly' | 'monthly'>('current');
+  const [dateRange, setDateRange] = useState(() => {
+    const presets = AnalyticsService.getDateRangePresets();
+    return presets.thisMonth;
+  });
+  const [selectedService, setSelectedService] = useState<string>('');
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
 
   // Data states
   const [professionals, setProfessionals] = useState<Professional[]>([]);
