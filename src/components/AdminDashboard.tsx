@@ -827,6 +827,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">市区町村</label>
+                  <input
+                    type="text"
+                    value={professionalForm.address.city}
+                    onChange={(e) => setProfessionalForm({
+                      ...professionalForm, 
+                      address: {...professionalForm.address, city: e.target.value}
+                    })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">それ以降の住所</label>
+                  <input
+                    type="text"
+                    value={professionalForm.address.detail}
+                    onChange={(e) => setProfessionalForm({
+                      ...professionalForm, 
+                      address: {...professionalForm.address, detail: e.target.value}
+                    })}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
               </div>
             </div>
             
