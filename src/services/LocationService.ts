@@ -17,25 +17,51 @@ export class LocationService {
       const fullAddress = `${address.prefecture}${address.city}${address.detail}`;
       console.log(`🗺️ 住所「${fullAddress}」の座標を取得中...`);
       
-      // 実際の実装では、Google Maps Geocoding APIを使用
-      // const response = await fetch(
-      //   `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${API_KEY}`
-      // );
-      // const data = await response.json();
-      // return data.results[0]?.geometry.location;
+      // Google Maps Geocoding APIを使用
+      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+      if (!apiKey) {
+        console.warn('⚠️ Google Maps API キーが設定されていません');
+        return this.getMockCoordinates();
+      }
+
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${apiKey}`
+      );
       
-      // モックデータとして東京の座標を返す
-      const mockCoordinates = {
-        lat: 35.6762 + (Math.random() - 0.5) * 0.1, // 東京周辺のランダムな座標
-        lng: 139.6503 + (Math.random() - 0.5) * 0.1
+      if (!response.ok) {
+        console.error('Google Maps API リクエストエラー:', response.status);
+        return this.getMockCoordinates();
+      }
+
+      const data = await response.json();
+      
+      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+        console.warn('住所が見つかりませんでした:', data.status);
+        return this.getMockCoordinates();
+      }
+
+      const location = data.results[0].geometry.location;
+      const coordinates = {
+        lat: location.lat,
+        lng: location.lng
       };
       
-      console.log(`📍 座標取得完了: ${mockCoordinates.lat}, ${mockCoordinates.lng}`);
-      return mockCoordinates;
+      console.log(`📍 座標取得完了: ${coordinates.lat}, ${coordinates.lng}`);
+      return coordinates;
     } catch (error) {
       console.error('座標取得エラー:', error);
-      return null;
+      return this.getMockCoordinates();
     }
+  }
+
+  // フォールバック用のモック座標
+  private static getMockCoordinates(): Coordinates {
+    const mockCoordinates = {
+      lat: 35.6762 + (Math.random() - 0.5) * 0.1, // 東京周辺のランダムな座標
+      lng: 139.6503 + (Math.random() - 0.5) * 0.1
+    };
+    console.log(`📍 モック座標を使用: ${mockCoordinates.lat}, ${mockCoordinates.lng}`);
+    return mockCoordinates;
   }
 
   // 2点間の距離を計算（ハーバーサイン公式）
