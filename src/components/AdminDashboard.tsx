@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import type { User, Order, Professional, Label } from '../types';
-import { 
-  Users, 
-  ShoppingCart, 
-  Settings, 
-  LogOut, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Eye, 
-  X, 
+import {
+  Users,
+  User, // ← これを追加
+  ShoppingCart,
+  Settings,
+  LogOut,
+  Plus,
+  Edit,
+  Trash2,
+  Eye,
+  X,
   Save,
   Upload,
   ClipboardList,
@@ -24,7 +25,7 @@ import {
   Phone,
   MapPin,
   Tag
-} from 'lucide-react';
+} from "lucide-react";
 import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';
 import { BusinessDayService } from '../services/BusinessDayService';
@@ -49,6 +50,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [businessDays, setBusinessDays] = useState([1, 2, 3, 4, 5]); // 月-金
   const [holidays, setHolidays] = useState<string[]>([]);
   const [newHoliday, setNewHoliday] = useState('');
+  // ラベル管理で使用されている state（未定義だった）
+const [labels, setLabels] = useState<Label[]>([]);
   const [salesPeriod, setSalesPeriod] = useState<'week' | 'month'>('week');
   const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null);
   const [cancellationInfo, setCancellationInfo] = useState<{
