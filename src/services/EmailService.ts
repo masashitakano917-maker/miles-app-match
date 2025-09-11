@@ -81,7 +81,7 @@ export class EmailService {
 
       console.log('📧 [EmailService] SendGrid Web APIでメール送信中...');
 
-      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      const response = await fetch('/sendgrid-api/v3/mail/send', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
