@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { User, Order, Professional, Label } from '../types';
 import {
   Users,
-  User, // ← これを追加
+  User as UserIcon,
   ShoppingCart,
   Settings,
   LogOut,
