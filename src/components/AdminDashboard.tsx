@@ -57,6 +57,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [selectedService, setSelectedService] = useState<string>('');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
 
+  // Calculate analytics data based on current filters
+  const currentFilter = {
+    dateRange,
+    serviceId: selectedService || undefined,
+    dayOfWeek: selectedDays.length > 0 ? selectedDays : undefined
+  };
+
+  const currentAnalytics = AnalyticsService.getAnalytics(orders, currentFilter);
+
   // Data states
 
   // Service options for filtering
