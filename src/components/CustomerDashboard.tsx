@@ -4,7 +4,7 @@ import { ShoppingCart, Clock, CheckCircle, XCircle, LogOut, ChevronRight, ArrowL
 import { NotificationService } from '../services/NotificationService';
 import { BusinessDayService } from '../services/BusinessDayService';
 import { DataService } from '../services/DataService';
-import { MatchingService } from '../services/MatchingService';
+import { SequentialMatchingService } from '../services/SequentialMatchingService';
 
 interface CustomerDashboardProps {
   user: User;
@@ -149,9 +149,8 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
     // データを永続化
     DataService.saveOrders(updatedOrders);
 
-    // 該当するプロフェッショナルに新規依頼を配信
-    const eligibleProfessionals = MatchingService.distributeNewOrder(newOrder);
-    console.log(`📋 ${eligibleProfessionals.length}名のプロフェッショナルに新規依頼を配信しました`);
+    // 段階的マッチングを開始
+    await SequentialMatchingService.startSequentialMatching(newOrder);
 
     // Send notifications
     await NotificationService.sendOrderNotification(newOrder, selectedPlan);

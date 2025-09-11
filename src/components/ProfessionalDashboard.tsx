@@ -3,7 +3,7 @@ import type { User, Order, Professional } from '../types';
 import { Bell, CheckCircle, Clock, MapPin, LogOut, Phone, Mail, Eye, X, Edit, Save, EyeOff } from 'lucide-react';
 import { NotificationService } from '../services/NotificationService';
 import { DataService } from '../services/DataService';
-import { MatchingService } from '../services/MatchingService';
+import { SequentialMatchingService } from '../services/SequentialMatchingService';
 
 interface ProfessionalDashboardProps {
   user: User;
@@ -14,6 +14,9 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
   const [activeTab, setActiveTab] = useState('requests');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showDateSelection, setShowDateSelection] = useState(false);
+  const [selectedOrderForAccept, setSelectedOrderForAccept] = useState<Order | null>(null);
+  const [selectedPreferredDate, setSelectedPreferredDate] = useState<string>('');
 
   // Professional data from DataService
   const [professionalData, setProfessionalData] = useState<Professional | null>(null);
@@ -64,7 +67,19 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
   // Load professional's orders on mount and set up refresh
   useEffect(() => {
     const loadProfessionalOrders = () => {
-      const orders = MatchingService.getProfessionalOrders(user.id);
+      const storageKey = `professional_orders_${user.id}`;
+      const orders = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      const deserializedOrders = orders.map((order: any) => ({
+        ...order,
+        createdAt: new Date(order.createdAt),
+        updatedAt: new Date(order.updatedAt),
+        scheduledDate: order.scheduledDate ? new Date(order.scheduledDate) : undefined,
+        preferredDates: order.preferredDates ? {
+          first: new Date(order.preferredDates.first),
+          second: order.preferredDates.second ? new Date(order.preferredDates.second) : undefined,
+          third: order.preferredDates.third ? new Date(order.preferredDates.third) : undefined
+        } : undefined
+      }));
       setMockRequests(orders);
     };
     
@@ -79,7 +94,43 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
   // Mock active jobs (empty by default)
   const [mockActiveJobs, setMockActiveJobs] = useState<Order[]>([]);
 
-  const handleAcceptJob = async (orderId: string) => {
+  const handleShowDateSelection = (order: Order) => {
+    setSelectedOrderForAccept(order);
+    setShowDateSelection(true);
+  };
+
+  const handleAcceptJob = async () => {
+    if (!selectedOrderForAccept || !selectedPreferredDate) return;
+
+    const selectedDate = new Date(selectedPreferredDate);
+    const success = await SequentialMatchingService.acceptJob(
+      selectedOrderForAccept.id, 
+      user.id, 
+      selectedDate
+    );
+
+    if (success) {
+      // Move from requests to active jobs
+      const updatedOrder = { 
+        ...selectedOrderForAccept, 
+        status: 'matched' as const, 
+        assignedProfessionalId: user.id,
+        scheduledDate: selectedDate
+      };
+      setMockRequests(mockRequests.filter(r => r.id !== selectedOrderForAccept.id));
+      setMockActiveJobs([...mockActiveJobs, updatedOrder]);
+
+      alert(`案件 ${selectedOrderForAccept.id} を受注しました。お客様とAdminに通知メールを送信いたします。`);
+    } else {
+      alert('受注に失敗しました。既に他のプロフェッショナルが受注した可能性があります。');
+    }
+
+    setShowDateSelection(false);
+    setSelectedOrderForAccept(null);
+    setSelectedPreferredDate('');
+  };
+
+  const handleAcceptJobOld = async (orderId: string) => {
     const order = mockRequests.find(r => r.id === orderId);
     if (!order || !professionalData) return;
 
@@ -88,8 +139,6 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
     setMockRequests(mockRequests.filter(r => r.id !== orderId));
     setMockActiveJobs([...mockActiveJobs, updatedOrder]);
     
-    // Remove from professional's order list
-    MatchingService.removeOrderFromProfessional(user.id, orderId);
 
     // Send notifications
     await NotificationService.sendMatchNotification(updatedOrder, professionalData);
@@ -367,7 +416,7 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
                           </p>
                         </div>
                         <button
-                          onClick={() => handleAcceptJob(request.id)}
+                          onClick={() => handleShowDateSelection(request)}
                           className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-6 py-2 rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all font-medium"
                         >
                           受注する
@@ -730,6 +779,101 @@ const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ user, onL
           </div>
         )}
       </div>
+
+      {/* Date Selection Modal */}
+      {showDateSelection && selectedOrderForAccept && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-white">希望日選択</h3>
+              <button
+                onClick={() => setShowDateSelection(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-300 mb-4">
+                以下の希望日から選択してください：
+              </p>
+              
+              {selectedOrderForAccept.preferredDates && (
+                <div className="space-y-3">
+                  <label className="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
+                    <input
+                      type="radio"
+                      name="preferredDate"
+                      value={selectedOrderForAccept.preferredDates.first.toISOString()}
+                      onChange={(e) => setSelectedPreferredDate(e.target.value)}
+                      className="mr-3"
+                    />
+                    <div>
+                      <p className="text-white font-medium">第一希望</p>
+                      <p className="text-gray-400 text-sm">
+                        {selectedOrderForAccept.preferredDates.first.toLocaleDateString('ja-JP')} {selectedOrderForAccept.preferredDates.first.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </label>
+                  
+                  {selectedOrderForAccept.preferredDates.second && (
+                    <label className="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
+                      <input
+                        type="radio"
+                        name="preferredDate"
+                        value={selectedOrderForAccept.preferredDates.second.toISOString()}
+                        onChange={(e) => setSelectedPreferredDate(e.target.value)}
+                        className="mr-3"
+                      />
+                      <div>
+                        <p className="text-white font-medium">第二希望</p>
+                        <p className="text-gray-400 text-sm">
+                          {selectedOrderForAccept.preferredDates.second.toLocaleDateString('ja-JP')} {selectedOrderForAccept.preferredDates.second.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </label>
+                  )}
+                  
+                  {selectedOrderForAccept.preferredDates.third && (
+                    <label className="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
+                      <input
+                        type="radio"
+                        name="preferredDate"
+                        value={selectedOrderForAccept.preferredDates.third.toISOString()}
+                        onChange={(e) => setSelectedPreferredDate(e.target.value)}
+                        className="mr-3"
+                      />
+                      <div>
+                        <p className="text-white font-medium">第三希望</p>
+                        <p className="text-gray-400 text-sm">
+                          {selectedOrderForAccept.preferredDates.third.toLocaleDateString('ja-JP')} {selectedOrderForAccept.preferredDates.third.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setShowDateSelection(false)}
+                className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleAcceptJob}
+                disabled={!selectedPreferredDate}
+                className="px-6 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                受注する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
