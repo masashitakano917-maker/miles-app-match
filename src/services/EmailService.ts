@@ -83,6 +83,8 @@ export class EmailService {
   }
 
   /** 複数宛先（1件ずつ送信） */
+    }
+  }
   static async sendBulkEmail(
     recipients: string[],
     subject: string,
