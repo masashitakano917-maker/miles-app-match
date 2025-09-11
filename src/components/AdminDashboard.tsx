@@ -35,6 +35,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showProfessionalForm, setShowProfessionalForm] = useState(false);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
   
+  // Customer management state
+  const [customers, setCustomers] = useState<any[]>([]);
+  
+  // Label management state
+  const [availableLabels, setAvailableLabels] = useState<any[]>([]);
+  const [selectedLabels, setSelectedLabels] = useState<any[]>([]);
+  
   // Analytics state
   const [viewMode, setViewMode] = useState<'current' | 'comparison'>('current');
   const [dateRange, setDateRange] = useState(AnalyticsService.getDateRangePresets().thisMonth);
@@ -96,9 +103,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const loadData = () => {
     const loadedOrders = DataService.loadOrders();
     const loadedProfessionals = DataService.loadProfessionals();
+    const loadedCustomers = DataService.loadCustomers();
+    const loadedLabels = DataService.loadLabels();
     
     setOrders(loadedOrders);
     setProfessionals(loadedProfessionals);
+    setCustomers(loadedCustomers);
+    setAvailableLabels(loadedLabels);
   };
 
   // Calculate analytics
@@ -166,7 +177,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       bio: professional.bio || '',
       equipment: professional.equipment || '',
       experience: professional.experience || '',
-      labels: professional.labels || [],
+      labels: [],
       address: professional.address || {
         postalCode: '',
         prefecture: '',
@@ -175,6 +186,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       }
     });
     setShowProfessionalForm(true);
+    setSelectedLabels(professional.labels || []);
   };
 
   const handleSaveProfessional = async () => {
@@ -186,7 +198,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       email: professionalForm.email,
       phone: professionalForm.phone,
       role: 'professional',
-      labels: professionalForm.labels,
+      labels: selectedLabels,
       isActive: editingProfessional?.isActive ?? true,
       completedJobs: editingProfessional?.completedJobs ?? 0,
       rating: editingProfessional?.rating ?? 5.0,
@@ -223,6 +235,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       DataService.saveProfessionals(updatedProfessionals);
       console.log(`✅ プロフェッショナル ${professionalId} を削除しました`);
     }
+  };
+
+  const handleDeleteCustomer = (customerId: string) => {
+    if (confirm('このカスタマーを削除しますか？')) {
+      const updatedCustomers = customers.filter(c => c.id !== customerId);
+      setCustomers(updatedCustomers);
+      DataService.saveCustomers(updatedCustomers);
+      console.log(`✅ カスタマー ${customerId} を削除しました`);
+    }
+  };
+
+  const handleAddLabel = (label: any) => {
+    if (!selectedLabels.find(l => l.id === label.id)) {
+      setSelectedLabels([...selectedLabels, label]);
+    }
+  };
+
+  const handleRemoveLabel = (labelId: string) => {
+    setSelectedLabels(selectedLabels.filter(l => l.id !== labelId));
   };
 
   const getStatusIcon = (status: Order['status']) => {
@@ -375,6 +406,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 {label}
               </button>
             ))}
+            <button
+              onClick={() => setActiveTab('customers')}
+              className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'customers'
+                  ? 'border-orange-500 text-orange-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              カスタマー管理
+            </button>
           </nav>
         </div>
 
@@ -586,6 +628,83 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Customers Tab */}
+        {activeTab === 'customers' && (
+          <div>
+            <h2 className="text-xl font-semibold text-white mb-6">カスタマー管理</h2>
+            
+            <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-700">
+                  <thead className="bg-gray-700">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        名前
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        メール
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        電話番号
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        住所
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        登録日
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        操作
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-gray-800 divide-y divide-gray-700">
+                    {customers.map((customer) => (
+                      <tr key={customer.id} className="hover:bg-gray-700">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-white">{customer.name}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {customer.email}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {customer.phone || '未設定'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {customer.address ? 
+                            `${customer.address.prefecture} ${customer.address.city}` : 
+                            '未設定'
+                          }
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {customer.createdAt ? new Date(customer.createdAt).toLocaleDateString('ja-JP') : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleDeleteCustomer(customer.id)}
+                              className="text-red-400 hover:text-red-300"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {customers.length === 0 && (
+                <div className="text-center py-12">
+                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-400">カスタマーが登録されていません</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -850,6 +969,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     })}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">スキル・ラベル</label>
+                <div className="space-y-4">
+                  {/* Selected Labels */}
+                  <div>
+                    <p className="text-sm text-gray-400 mb-2">選択済みラベル:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedLabels.map((label) => (
+                        <div key={label.id} className="flex items-center gap-2 bg-orange-900 bg-opacity-30 border border-orange-700 px-3 py-1 rounded-lg">
+                          <span className="text-orange-300 text-sm">{label.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveLabel(label.id)}
+                            className="text-orange-400 hover:text-orange-300"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      {selectedLabels.length === 0 && (
+                        <p className="text-gray-500 text-sm">ラベルが選択されていません</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Available Labels */}
+                  <div>
+                    <p className="text-sm text-gray-400 mb-2">利用可能なラベル:</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                      {availableLabels
+                        .filter(label => !selectedLabels.find(sl => sl.id === label.id))
+                        .map((label) => (
+                          <button
+                            key={label.id}
+                            type="button"
+                            onClick={() => handleAddLabel(label)}
+                            className="text-left p-2 bg-gray-700 hover:bg-gray-600 rounded border border-gray-600 hover:border-orange-500 transition-colors"
+                          >
+                            <div className="text-white text-sm font-medium">{label.name}</div>
+                            <div className="text-gray-400 text-xs">{label.category}</div>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
