@@ -58,6 +58,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
 
   // Data states
+
+  // Service options for filtering
+  const serviceOptions = [
+    { value: '', label: 'すべてのサービス' },
+    { value: 'photo-service', label: '写真撮影' },
+    { value: 'cleaning-service', label: 'お掃除' },
+    { value: 'staff-service', label: 'スタッフ派遣' }
+  ];
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
