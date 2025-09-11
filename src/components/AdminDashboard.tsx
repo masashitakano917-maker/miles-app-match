@@ -31,6 +31,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import { DataService } from '../services/DataService';
+import { AnalyticsService } from '../services/AnalyticsService';
 import { NotificationService } from '../services/NotificationService';
 import { LocationService } from '../services/LocationService';
 import { BusinessDayService } from '../services/BusinessDayService';
