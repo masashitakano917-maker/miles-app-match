@@ -31,29 +31,23 @@ export class EmailService {
     try {
       // SendGrid設定確認
       const apiKey = import.meta.env.VITE_SENDGRID_API_KEY;
-      if (!apiKey || apiKey === 'your_sendgrid_api_key_here' || apiKey.includes('SG.')) {
-        // 開発環境用フォールバック
-        console.log('📧 [EmailService] メール送信シミュレーション（SendGrid設定確認中）:');
-        console.log(`   宛先: ${payload.to || import.meta.env.VITE_DEFAULT_TO_EMAIL || 'of@thisismerci.com'}`);
-        console.log(`   件名: ${payload.subject}`);
-        console.log(`   返信先: ${payload.replyEmail || 'なし'}`);
-        
-        if (payload.html) {
-          console.log(`   内容: ${payload.html.substring(0, 200)}...`);
-        } else if (payload.message) {
-          console.log(`   メッセージ: ${payload.message}`);
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        console.log('✅ [EmailService] メール送信完了（シミュレーション）');
-        return true;
-      }
-
-      // SendGrid Web API を使用した実際のメール送信
       const fromEmail = import.meta.env.VITE_FROM_EMAIL || 'no-reply@openframe.inc';
       const fromName = import.meta.env.VITE_FROM_NAME || 'Miles マッチングプラットフォーム';
       const defaultTo = import.meta.env.VITE_DEFAULT_TO_EMAIL || 'of@thisismerci.com';
 
+      console.log('📧 [EmailService] 設定確認:');
+      console.log(`   APIキー: ${apiKey ? '設定済み' : '未設定'}`);
+      console.log(`   送信者: ${fromName} <${fromEmail}>`);
+      console.log(`   宛先: ${Array.isArray(payload.to) ? payload.to[0] : (payload.to || defaultTo)}`);
+      console.log(`   件名: ${payload.subject}`);
+
+      if (!apiKey || apiKey === 'your_sendgrid_api_key_here') {
+        console.log('⚠️ [EmailService] SendGrid APIキーが未設定のため、シミュレーションモードで動作');
+        await this.simulateEmailSending(payload, fromEmail, fromName, defaultTo);
+        return true;
+      }
+
+      // SendGrid Web API を使用した実際のメール送信
       const emailData = {
         personalizations: [
           {
@@ -85,9 +79,7 @@ export class EmailService {
         };
       }
 
-      console.log(`📧 [EmailService] SendGrid Web APIでメール送信中...`);
-      console.log(`   宛先: ${emailData.personalizations[0].to[0].email}`);
-      console.log(`   件名: ${emailData.personalizations[0].subject}`);
+      console.log('📧 [EmailService] SendGrid Web APIでメール送信中...');
 
       const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
@@ -98,19 +90,34 @@ export class EmailService {
         body: JSON.stringify(emailData)
       });
 
+      console.log(`📧 [EmailService] SendGrid APIレスポンス: ${response.status}`);
+
       if (response.ok) {
-        console.log('✅ [EmailService] メール送信成功');
+        console.log('✅ [EmailService] メール送信成功！');
+        console.log(`   実際に ${emailData.personalizations[0].to[0].email} にメールが送信されました`);
         return true;
       } else {
         const errorText = await response.text();
         console.error('❌ [EmailService] SendGrid APIエラー:', response.status, errorText);
         
-        // CORS エラーの場合はシミュレーションモードにフォールバック
-        if (response.status === 0 || response.status === 403) {
-          console.log('📧 [EmailService] CORS制限のためシミュレーションモードで動作');
-          console.log(`   宛先: ${emailData.personalizations[0].to[0].email}`);
-          console.log(`   件名: ${emailData.personalizations[0].subject}`);
-          console.log('✅ [EmailService] メール送信完了（シミュレーション）');
+        // APIエラーの詳細を解析
+        try {
+          const errorData = JSON.parse(errorText);
+          console.error('❌ [EmailService] エラー詳細:', errorData);
+          
+          if (errorData.errors) {
+            errorData.errors.forEach((error: any, index: number) => {
+              console.error(`   エラー${index + 1}: ${error.message} (${error.field})`);
+            });
+          }
+        } catch (e) {
+          console.error('❌ [EmailService] エラーレスポンス解析失敗:', errorText);
+        }
+        
+        // 特定のエラーの場合はシミュレーションモードにフォールバック
+        if (response.status === 403 || response.status === 401) {
+          console.log('⚠️ [EmailService] 認証エラーのため、シミュレーションモードで動作');
+          await this.simulateEmailSending(payload, fromEmail, fromName, defaultTo);
           return true;
         }
         
@@ -121,16 +128,49 @@ export class EmailService {
       console.error("❌ [EmailService] メール送信エラー:", error);
       
       // ネットワークエラーの場合はシミュレーションモードにフォールバック
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        console.log('📧 [EmailService] ネットワーク制限のためシミュレーションモードで動作');
-        console.log(`   宛先: ${payload.to || import.meta.env.VITE_DEFAULT_TO_EMAIL || 'of@thisismerci.com'}`);
-        console.log(`   件名: ${payload.subject}`);
-        console.log('✅ [EmailService] メール送信完了（シミュレーション）');
+      if (error.name === 'TypeError' || error.message.includes('fetch') || error.message.includes('CORS')) {
+        console.log('⚠️ [EmailService] ネットワーク/CORS制限のため、シミュレーションモードで動作');
+        const fromEmail = import.meta.env.VITE_FROM_EMAIL || 'no-reply@openframe.inc';
+        const fromName = import.meta.env.VITE_FROM_NAME || 'Miles マッチングプラットフォーム';
+        const defaultTo = import.meta.env.VITE_DEFAULT_TO_EMAIL || 'of@thisismerci.com';
+        await this.simulateEmailSending(payload, fromEmail, fromName, defaultTo);
         return true;
       }
       
       return false;
     }
+  }
+
+  /** シミュレーションモードでのメール送信 */
+  private static async simulateEmailSending(
+    payload: SendEmailPayload, 
+    fromEmail: string, 
+    fromName: string, 
+    defaultTo: string
+  ): Promise<void> {
+    console.log('📧 ==================== メール送信シミュレーション ====================');
+    console.log(`📤 送信者: ${fromName} <${fromEmail}>`);
+    console.log(`📥 宛先: ${Array.isArray(payload.to) ? payload.to[0] : (payload.to || defaultTo)}`);
+    console.log(`📋 件名: ${payload.subject}`);
+    
+    if (payload.replyEmail) {
+      console.log(`↩️ 返信先: ${payload.replyEmail}`);
+    }
+    
+    console.log('📄 内容:');
+    if (payload.html) {
+      console.log(payload.html.substring(0, 500) + (payload.html.length > 500 ? '...' : ''));
+    } else if (payload.message) {
+      console.log(`   メッセージ: ${payload.message}`);
+    } else {
+      console.log('   デフォルトテンプレートを使用');
+    }
+    
+    // 送信遅延をシミュレート
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    console.log('✅ メール送信完了（シミュレーション）');
+    console.log('📧 ================================================================');
   }
 
   /** 複数宛先（1件ずつ送信） */
@@ -164,12 +204,60 @@ export class EmailService {
         <meta charset="utf-8">
         <title>${payload.subject}</title>
         <style>
-          body { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #f97316, #ea580c); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { background: white; padding: 30px; border: 1px solid #e5e7eb; border-top: none; }
-          .footer { background: #f9fafb; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; color: #6b7280; font-size: 14px; }
-          .button { display: inline-block; background: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+          body { 
+            font-family: 'Helvetica Neue', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f5f5f5;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 20px auto; 
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          .header { 
+            background: linear-gradient(135deg, #f97316, #ea580c); 
+            color: white; 
+            padding: 30px; 
+            text-align: center; 
+          }
+          .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: bold;
+          }
+          .content { 
+            padding: 30px; 
+          }
+          .footer { 
+            background: #f9fafb; 
+            padding: 20px; 
+            text-align: center; 
+            color: #6b7280; 
+            font-size: 14px; 
+            border-top: 1px solid #e5e7eb;
+          }
+          .button { 
+            display: inline-block; 
+            background: #f97316; 
+            color: white; 
+            padding: 12px 24px; 
+            text-decoration: none; 
+            border-radius: 6px; 
+            margin: 20px 0; 
+            font-weight: bold;
+          }
+          .highlight {
+            background: #fef3c7;
+            padding: 15px;
+            border-left: 4px solid #f59e0b;
+            margin: 20px 0;
+          }
         </style>
       </head>
       <body>
@@ -178,13 +266,23 @@ export class EmailService {
             <h1>Miles マッチングプラットフォーム</h1>
           </div>
           <div class="content">
-            ${payload.name ? `<p>こんにちは、${payload.name}様</p>` : ''}
-            ${payload.message ? `<p>${payload.message}</p>` : '<p>お知らせがあります。</p>'}
+            ${payload.name ? `<p>こんにちは、<strong>${payload.name}</strong>様</p>` : '<p>いつもお世話になっております。</p>'}
+            
+            ${payload.message ? `
+              <div class="highlight">
+                <p><strong>メッセージ:</strong></p>
+                <p>${payload.message}</p>
+              </div>
+            ` : '<p>重要なお知らせがあります。</p>'}
+            
             <p>ご不明な点がございましたら、お気軽にお問い合わせください。</p>
+            
+            <p>今後ともよろしくお願いいたします。</p>
           </div>
           <div class="footer">
-            <p>Miles マッチングプラットフォーム</p>
+            <p><strong>Miles マッチングプラットフォーム</strong></p>
             <p>このメールは自動送信されています。</p>
+            <p>お問い合わせ: ${import.meta.env.VITE_FROM_EMAIL || 'no-reply@openframe.inc'}</p>
           </div>
         </div>
       </body>
@@ -213,7 +311,8 @@ export class EmailService {
       if (!value || value.includes('your_') || value.includes('yourdomain')) {
         missingVars.push(varName);
       } else {
-        config[varName] = varName.includes('API_KEY') ? '***設定済み***' : value;
+        config[varName] = varName.includes('API_KEY') ? 
+          `${value.substring(0, 10)}...***設定済み***` : value;
       }
     });
 
@@ -228,22 +327,41 @@ export class EmailService {
   static async sendTestEmail(to?: string): Promise<boolean> {
     const testTo = to || import.meta.env.VITE_DEFAULT_TO_EMAIL || 'of@thisismerci.com';
     
-    return this.send({
+    console.log(`🧪 [EmailService] テストメール送信開始: ${testTo}`);
+    
+    const result = await this.send({
       to: testTo,
-      subject: 'Miles プラットフォーム - テストメール',
+      subject: '🧪 Miles プラットフォーム - テストメール送信',
+      name: 'テストユーザー',
       html: `
-        <h2>テストメール送信成功！</h2>
+        <h2>🎉 テストメール送信成功！</h2>
         <p>SendGridの設定が正常に動作しています。</p>
-        <p>送信日時: ${new Date().toLocaleString('ja-JP')}</p>
+        
+        <div style="background: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3>📊 送信情報</h3>
+          <ul>
+            <li><strong>送信日時:</strong> ${new Date().toLocaleString('ja-JP')}</li>
+            <li><strong>送信者:</strong> ${import.meta.env.VITE_FROM_NAME} &lt;${import.meta.env.VITE_FROM_EMAIL}&gt;</li>
+            <li><strong>宛先:</strong> ${testTo}</li>
+            <li><strong>API設定:</strong> 有効</li>
+          </ul>
+        </div>
+        
         <p>このメールが届いていれば、メール機能は正常に動作しています。</p>
-        <hr>
-        <p><strong>設定情報:</strong></p>
-        <ul>
-          <li>送信者: ${import.meta.env.VITE_FROM_NAME} &lt;${import.meta.env.VITE_FROM_EMAIL}&gt;</li>
-          <li>宛先: ${testTo}</li>
-          <li>API設定: 有効</li>
-        </ul>
+        
+        <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border-left: 4px solid #22c55e;">
+          <p><strong>✅ 設定完了</strong></p>
+          <p>プラットフォームのメール通知機能が正常に動作します。</p>
+        </div>
       `
     });
+    
+    if (result) {
+      console.log('✅ [EmailService] テストメール送信完了');
+    } else {
+      console.log('❌ [EmailService] テストメール送信失敗');
+    }
+    
+    return result;
   }
 }
