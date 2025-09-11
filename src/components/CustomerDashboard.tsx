@@ -82,7 +82,6 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user, onLogout })
   ];
 
   const [mockOrders, setMockOrders] = useState<Order[]>([
-    // 永続化されたデータを読み込み
     ...DataService.loadOrders().filter(order => order.customerId === user.id)
   ]);
 

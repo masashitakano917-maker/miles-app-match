@@ -51,8 +51,6 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignUp, onShowLogin }) => {
     }
 
     try {
-      // 実際のAPIコールをここに実装
-      // 今はデモとして新しいユーザーを作成
       const newUser: User = {
         id: `customer-${Date.now()}`,
         name: formData.name,
@@ -66,6 +64,15 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignUp, onShowLogin }) => {
           detail: formData.detail
         }
       };
+
+      // カスタマーデータを保存
+      const customers = DataService.loadCustomers();
+      const newCustomerData = {
+        ...newUser,
+        password: formData.password
+      };
+      customers.push(newCustomerData);
+      DataService.saveCustomers(customers);
 
       onSignUp(newUser);
     } catch (err) {
