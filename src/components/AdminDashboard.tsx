@@ -44,6 +44,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null);
   const [selectedProfessionalForDetail, setSelectedProfessionalForDetail] = useState<Professional | null>(null);
+  const [newLabelName, setNewLabelName] = useState('');
+  const [newLabelCategory, setNewLabelCategory] = useState('');
+  const [businessDays, setBusinessDays] = useState([1, 2, 3, 4, 5]); // 月-金
+  const [holidays, setHolidays] = useState<string[]>([]);
+  const [newHoliday, setNewHoliday] = useState('');
+  const [salesPeriod, setSalesPeriod] = useState<'week' | 'month'>('week');
   const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null);
   const [cancellationInfo, setCancellationInfo] = useState<{
     fee: number;
@@ -537,6 +543,99 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     };
     return serviceNames[serviceId]?.[planId] || 'サービス';
   };
+
+  // Add new label
+  const handleAddLabel = () => {
+    if (!newLabelName.trim() || !newLabelCategory.trim()) return;
+    
+    const newLabel: Label = {
+      id: `label-${Date.now()}`,
+      name: newLabelName.trim(),
+      category: newLabelCategory.trim()
+    };
+    
+    const updatedLabels = [...labels, newLabel];
+    setLabels(updatedLabels);
+    DataService.saveLabels(updatedLabels);
+    
+    setNewLabelName('');
+    setNewLabelCategory('');
+    alert('ラベルを追加しました');
+  };
+
+  // Toggle business day
+  const toggleBusinessDay = (day: number) => {
+    const updatedDays = businessDays.includes(day)
+      ? businessDays.filter(d => d !== day)
+      : [...businessDays, day].sort();
+    setBusinessDays(updatedDays);
+  };
+
+  // Add holiday
+  const handleAddHoliday = () => {
+    if (!newHoliday || holidays.includes(newHoliday)) return;
+    const updatedHolidays = [...holidays, newHoliday].sort();
+    setHolidays(updatedHolidays);
+    setNewHoliday('');
+  };
+
+  // Remove holiday
+  const handleRemoveHoliday = (holiday: string) => {
+    setHolidays(holidays.filter(h => h !== holiday));
+  };
+
+  // Calculate sales statistics
+  const calculateSalesStats = () => {
+    const completedOrders = orders.filter(order => order.status === 'completed');
+    const now = new Date();
+    
+    if (salesPeriod === 'week') {
+      // Current week
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+      
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+      
+      const weekOrders = completedOrders.filter(order => 
+        order.completedDate && 
+        order.completedDate >= startOfWeek && 
+        order.completedDate <= endOfWeek
+      );
+      
+      const totalSales = weekOrders.reduce((sum, order) => sum + getPlanPrice(order.planId), 0);
+      const breakdown = weekOrders.reduce((acc, order) => {
+        const serviceName = getServiceName(order.serviceId, order.planId);
+        acc[serviceName] = (acc[serviceName] || 0) + getPlanPrice(order.planId);
+        return acc;
+      }, {} as Record<string, number>);
+      
+      return { totalSales, breakdown, period: '今週' };
+    } else {
+      // Current month
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      
+      const monthOrders = completedOrders.filter(order => 
+        order.completedDate && 
+        order.completedDate >= startOfMonth && 
+        order.completedDate <= endOfMonth
+      );
+      
+      const totalSales = monthOrders.reduce((sum, order) => sum + getPlanPrice(order.planId), 0);
+      const breakdown = monthOrders.reduce((acc, order) => {
+        const serviceName = getServiceName(order.serviceId, order.planId);
+        acc[serviceName] = (acc[serviceName] || 0) + getPlanPrice(order.planId);
+        return acc;
+      }, {} as Record<string, number>);
+      
+      return { totalSales, breakdown, period: '今月' };
+    }
+  };
+
+  const salesStats = calculateSalesStats();
 
   const getPlanPrice = (planId: string) => {
     const prices: { [key: string]: number } = {
@@ -1238,6 +1337,61 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         {/* Statistics Tab */}
         {activeTab === 'statistics' && (
           <div>
+            {/* Sales Statistics */}
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-white">売上統計</h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSalesPeriod('week')}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      salesPeriod === 'week'
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    週単位
+                  </button>
+                  <button
+                    onClick={() => setSalesPeriod('month')}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      salesPeriod === 'month'
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    月単位
+                  </button>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Total Sales */}
+                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                  <h3 className="text-lg font-semibold text-white mb-4">{salesStats.period}の売上合計</h3>
+                  <div className="text-3xl font-bold text-orange-400">
+                    ¥{salesStats.totalSales.toLocaleString()}
+                  </div>
+                </div>
+                
+                {/* Sales Breakdown */}
+                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                  <h3 className="text-lg font-semibold text-white mb-4">売上内訳</h3>
+                  <div className="space-y-2">
+                    {Object.entries(salesStats.breakdown).map(([service, amount]) => (
+                      <div key={service} className="flex justify-between items-center">
+                        <span className="text-gray-300">{service}</span>
+                        <span className="text-orange-400 font-medium">¥{amount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {Object.keys(salesStats.breakdown).length === 0 && (
+                      <p className="text-gray-400">売上データがありません</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <h2 className="text-xl font-semibold text-white mb-6">統計</h2>
             
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
@@ -1348,6 +1502,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">ラベル管理</h2>
             
+            {/* Add New Label */}
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-8">
+              <h3 className="text-lg font-semibold text-white mb-4">新しいラベルを追加</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">ラベル名</label>
+                  <input
+                    type="text"
+                    value={newLabelName}
+                    onChange={(e) => setNewLabelName(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    placeholder="例: 不動産撮影"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">カテゴリ</label>
+                  <input
+                    type="text"
+                    value={newLabelCategory}
+                    onChange={(e) => setNewLabelCategory(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                    placeholder="例: 写真撮影"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleAddLabel}
+                    className="w-full px-4 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all"
+                  >
+                    追加
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {['写真撮影', 'お掃除', 'スタッフ派遣'].map((category) => (
@@ -1380,6 +1569,75 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <div>
+            {/* Business Days Settings */}
+            <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
+              <h3 className="text-lg font-semibold text-white mb-4">営業日設定</h3>
+              <p className="text-gray-400 mb-6">営業日とキャンセル料金の設定を管理します。</p>
+              
+              <div className="mb-6">
+                <h4 className="text-md font-medium text-white mb-4">営業日</h4>
+                <div className="grid grid-cols-7 gap-2">
+                  {[
+                    { day: 0, label: '日', name: '日曜日' },
+                    { day: 1, label: '月', name: '月曜日' },
+                    { day: 2, label: '火', name: '火曜日' },
+                    { day: 3, label: '水', name: '水曜日' },
+                    { day: 4, label: '木', name: '木曜日' },
+                    { day: 5, label: '金', name: '金曜日' },
+                    { day: 6, label: '土', name: '土曜日' }
+                  ].map(({ day, label, name }) => (
+                    <button
+                      key={day}
+                      onClick={() => toggleBusinessDay(day)}
+                      className={`p-3 rounded-lg text-center font-medium transition-colors ${
+                        businessDays.includes(day)
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                      }`}
+                      title={name}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="text-md font-medium text-white mb-4">祝日・特別休業日</h4>
+                <div className="flex gap-2 mb-4">
+                  <input
+                    type="date"
+                    value={newHoliday}
+                    onChange={(e) => setNewHoliday(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                  />
+                  <button
+                    onClick={handleAddHoliday}
+                    className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                  >
+                    追加
+                  </button>
+                </div>
+                
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {holidays.map((holiday) => (
+                    <div key={holiday} className="flex items-center justify-between p-2 bg-gray-700 rounded-lg">
+                      <span className="text-white">{new Date(holiday).toLocaleDateString('ja-JP')}</span>
+                      <button
+                        onClick={() => handleRemoveHoliday(holiday)}
+                        className="text-red-400 hover:text-red-300 p-1"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {holidays.length === 0 && (
+                    <p className="text-gray-400 text-sm">祝日が設定されていません</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <h2 className="text-xl font-semibold text-white mb-6">設定</h2>
             
             <div className="space-y-6">

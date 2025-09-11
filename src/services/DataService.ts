@@ -3,8 +3,46 @@ export class DataService {
   private static readonly STORAGE_KEYS = {
     PROFESSIONALS: 'professionals_data',
     ORDERS: 'orders_data',
-    CUSTOMERS: 'customers_data'
+    CUSTOMERS: 'customers_data',
+    LABELS: 'labels_data'
   };
+
+  // ラベルデータの保存
+  static saveLabels(labels: any[]): void {
+    try {
+      localStorage.setItem(this.STORAGE_KEYS.LABELS, JSON.stringify(labels));
+      console.log('✅ ラベルデータを保存しました');
+    } catch (error) {
+      console.error('❌ ラベルデータ保存エラー:', error);
+    }
+  }
+
+  // ラベルデータの読み込み
+  static loadLabels(): any[] {
+    try {
+      const data = localStorage.getItem(this.STORAGE_KEYS.LABELS);
+      if (data) {
+        const labels = JSON.parse(data);
+        console.log('✅ ラベルデータを読み込みました:', labels.length, '件');
+        return labels;
+      }
+    } catch (error) {
+      console.error('❌ ラベルデータ読み込みエラー:', error);
+    }
+    
+    // デフォルトラベルを返す
+    return [
+      { id: 'label-1', name: '不動産撮影', category: '写真撮影' },
+      { id: 'label-2', name: 'ポートレート撮影', category: '写真撮影' },
+      { id: 'label-3', name: 'フード撮影', category: '写真撮影' },
+      { id: 'label-4', name: '1LDK', category: 'お掃除' },
+      { id: 'label-5', name: '2LDK', category: 'お掃除' },
+      { id: 'label-6', name: '3LDK', category: 'お掃除' },
+      { id: 'label-7', name: '翻訳', category: 'スタッフ派遣' },
+      { id: 'label-8', name: '通訳', category: 'スタッフ派遣' },
+      { id: 'label-9', name: 'イベントコンパニオン', category: 'スタッフ派遣' }
+    ];
+  }
 
   // プロフェッショナルデータの保存
   static saveProfessionals(professionals: any[]): void {
@@ -116,6 +154,7 @@ export class DataService {
     localStorage.removeItem(this.STORAGE_KEYS.PROFESSIONALS);
     localStorage.removeItem(this.STORAGE_KEYS.ORDERS);
     localStorage.removeItem(this.STORAGE_KEYS.CUSTOMERS);
+    localStorage.removeItem(this.STORAGE_KEYS.LABELS);
     console.log('✅ すべてのデータをクリアしました');
   }
 }
