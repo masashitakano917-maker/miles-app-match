@@ -1,420 +1,157 @@
-// 段階的マッチングサービス
-import { DataService } from './DataService';
-import { LocationService } from './LocationService';
-import { NotificationService } from './NotificationService';
-import type { Order, Professional } from '../types';
+// src/services/SequentialMatchingService.ts
+// 距離順（近い順）に “順番に” プロへ通知するマッチング制御
+// ・Cloudflare Functions /api/distance-matrix で距離を取得
+// ・1人に送って WAIT_MINUTES 待ち、未確定なら次の人へ
+// ・React StrictMode の二重実行対策として order.id 単位のロックを実装
+// ・途中で注文が matched / in_progress / completed になったら打ち切り
 
-interface MatchingSession {
-  orderId: string;
-  eligibleProfessionals: Array<{ professional: Professional; distance: number }>;
-  currentIndex: number;
-  notifiedProfessionals: Set<string>;
-  isActive: boolean;
-  timerId?: NodeJS.Timeout;
-  createdAt: Date;
+import type { Order, Professional } from '../types';
+import { DataService } from './DataService';
+import { EmailService } from './EmailService';
+
+// ---- 設定（必要に応じて調整してください） ----
+const WAIT_MINUTES = 7; // 各候補に待つ時間（分）
+const ADMIN_CONTACT = 'of@thisismerci.com'; // Reply-To に使う連絡先
+// -----------------------------------------
+
+// グローバルロック（StrictMode 対策：同一タブ二重起動を防ぐ）
+declare global {
+  // eslint-disable-next-line no-var
+  var __milesMatchingLocks: Map<string, Promise<void>>;
+}
+if (!globalThis.__milesMatchingLocks) globalThis.__milesMatchingLocks = new Map();
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function fullAddress(addr: Order['address'] | Professional['address']) {
+  if (!addr) return '';
+  return `${addr.prefecture || ''}${addr.city || ''}${addr.detail || ''}`.trim();
+}
+
+async function getSortedByDistance(originText: string, candidates: Professional[]) {
+  const destinations = candidates.map((p) => fullAddress(p.address)).filter(Boolean);
+  if (destinations.length === 0) return candidates;
+
+  const res = await fetch('/api/distance-matrix', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ origins: [originText], destinations }),
+  });
+
+  if (!res.ok) {
+    const t = await res.text();
+    console.error('[SequentialMatching] distance-matrix 失敗:', res.status, t);
+    // 失敗時は元配列のまま返す（フォールバック）
+    return candidates;
+  }
+
+  const json = await res.json();
+  // Google のレスポンス互換 { rows:[ { elements:[ { status, distance:{value, text}, duration:{...} } ] } ] }
+  const elements: any[] = json?.rows?.[0]?.elements || [];
+  const withDist = candidates.map((p, i) => ({
+    pro: p,
+    meters: elements[i]?.distance?.value ?? Number.POSITIVE_INFINITY,
+  }));
+
+  withDist.sort((a, b) => a.meters - b.meters);
+  return withDist.map((x) => x.pro);
+}
+
+function buildInviteHtml(order: Order, pro: Professional, index: number) {
+  const addr = order.address;
+  const when =
+    order.preferredDates?.first
+      ? new Date(order.preferredDates.first).toLocaleString('ja-JP')
+      : 'スケジュール調整';
+  const serviceMap: Record<string, Record<string, string>> = {
+    'photo-service': { 'real-estate': '不動産撮影', portrait: 'ポートレート撮影', food: 'フード撮影' },
+    'cleaning-service': { '1ldk': '1LDK清掃', '2ldk': '2LDK清掃', '3ldk': '3LDK清掃' },
+    'staff-service': { translation: '翻訳', interpretation: '通訳', companion: 'イベントコンパニオン' },
+  };
+  const service = serviceMap[order.serviceId]?.[order.planId] || 'サービス';
+
+  return `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;">
+      <p>${pro.name} 様</p>
+      <p>下記のご依頼にご対応可能かご確認ください。（${index + 1}人目としてご案内）</p>
+      <hr/>
+      <p><b>案件ID:</b> ${order.id}</p>
+      <p><b>サービス:</b> ${service}</p>
+      <p><b>希望日時:</b> ${when}</p>
+      <p><b>場所:</b> 〒${addr.postalCode} ${addr.prefecture} ${addr.city} ${addr.detail}</p>
+      <p><b>お客様:</b> ${order.customerName} (${order.customerEmail})</p>
+      <hr/>
+      <p>このメールに <b>返信</b> いただければ担当者に届きます（Reply-To 設定済）。</p>
+      <p>※他の候補者にも順次ご案内中のため、回答がない場合は ${WAIT_MINUTES} 分後に次の方へ回ります。</p>
+    </div>
+  `;
 }
 
 export class SequentialMatchingService {
-  private static sessions = new Map<string, MatchingSession>();
-  private static readonly WAIT_TIME_MINUTES = 7;
-  private static readonly MAX_DISTANCE_KM = 80;
-
-  // 段階的マッチングを開始
-  static async startSequentialMatching(order: Order): Promise<void> {
-    console.log(`🎯 段階的マッチング開始: ${order.id}`);
-    console.log(`📍 注文住所: ${order.address.prefecture} ${order.address.city} ${order.address.detail}`);
-
-    try {
-      // 既存セッションがあれば停止
-      if (this.sessions.has(order.id)) {
-        this.stopMatching(order.id);
-      }
-
-      // 該当プロフェッショナルを距離順で取得
-      const allProfessionals = DataService.loadProfessionals();
-      console.log(`👥 全プロフェッショナル数: ${allProfessionals.length}`);
-      const eligibleProfessionals = await this.findEligibleProfessionalsByDistance(order, allProfessionals);
-
-      if (eligibleProfessionals.length === 0) {
-        console.log('❌ 該当するプロフェッショナルが見つかりません');
-        return;
-      }
-
-      // マッチングセッション作成
-      const session: MatchingSession = {
-        orderId: order.id,
-        eligibleProfessionals,
-        currentIndex: 0,
-        notifiedProfessionals: new Set(),
-        isActive: true,
-        createdAt: new Date()
-      };
-
-      this.sessions.set(order.id, session);
-      console.log(`📋 ${eligibleProfessionals.length}名のプロフェッショナルが対象`);
-      console.log(`📍 距離順リスト:`, eligibleProfessionals.map(p => `${p.professional.name}: ${p.distance}km`));
-
-      // 最初のプロに通知（1人だけ） - 再帰呼び出しを避ける
-      await this.notifyNextProfessional(session);
-
-    } catch (error) {
-      console.error('❌ 段階的マッチング開始エラー:', error);
-    }
-  }
-
-  // 次のプロフェッショナルに通知
-  private static async notifyNextProfessional(session: MatchingSession): Promise<void> {
-    if (!session.isActive || session.currentIndex >= session.eligibleProfessionals.length) {
-      console.log('⏹️ マッチング終了: 全プロフェッショナルに通知済み');
-      this.stopMatching(session.orderId);
+  /**
+   * 依頼作成後に呼び出し：近い順にプロへ “順番配信”
+   */
+  static async startMatching(order: Order) {
+    // すでに別スレッドが動いていれば何もしない
+    if (globalThis.__milesMatchingLocks.get(order.id)) {
+      console.log('[SequentialMatching] 既に実行中のためスキップ:', order.id);
       return;
     }
 
-    const { professional, distance } = session.eligibleProfessionals[session.currentIndex];
+    const lockPromise = this._run(order).catch((e) => {
+      console.error('[SequentialMatching] 実行エラー:', e);
+    }).finally(() => {
+      globalThis.__milesMatchingLocks.delete(order.id);
+    });
 
-    console.log(`📧 通知送信 [${session.currentIndex + 1}/${session.eligibleProfessionals.length}]: ${professional.name} (距離: ${distance}km)`);
-
-    // 通知済みリストに追加
-    session.notifiedProfessionals.add(professional.id);
-
-    // プロフェッショナルの新規依頼リストに追加（応募可能状態にする）
-    this.addOrderToProfessional(professional.id, session.orderId);
-
-    // メール通知送信
-    const order = this.getOrderById(session.orderId);
-    if (order) {
-      try {
-        await NotificationService.sendProfessionalJobNotification(order, this.getPlanFromOrder(order), professional);
-        console.log(`✅ メール送信完了: ${professional.name}`);
-      } catch (error) {
-        console.error(`❌ メール送信エラー (${professional.name}):`, error);
-      }
-    }
-
-    // 次のインデックスに進める
-    session.currentIndex++;
-
-    // 7分後に次のプロに通知するタイマー設定（再帰呼び出しではなくタイマーで制御）
-    session.timerId = setTimeout(async () => {
-      if (session.isActive) {
-        console.log(`⏰ ${this.WAIT_TIME_MINUTES}分経過 - 次のプロに通知開始`);
-        await this.notifyNextProfessional(session);
-      }
-    }, this.WAIT_TIME_MINUTES * 60 * 1000);
-    
-    console.log(`⏱️ ${this.WAIT_TIME_MINUTES}分タイマー開始`);
+    globalThis.__milesMatchingLocks.set(order.id, lockPromise);
+    return lockPromise;
   }
 
-  // プロフェッショナルが応募
-  static async acceptJob(orderId: string, professionalId: string, selectedDate: Date): Promise<boolean> {
-    const session = this.sessions.get(orderId);
-    if (!session || !session.isActive) {
-      console.log('❌ 無効なセッションまたは既に終了済み');
-      return false;
-    }
+  private static async _run(order: Order) {
+    console.log('🚀 [SequentialMatching] start:', order.id);
 
-    // 通知済みプロフェッショナルかチェック
-    if (!session.notifiedProfessionals.has(professionalId)) {
-      console.log('❌ 通知されていないプロフェッショナルからの応募');
-      return false;
-    }
-
-    console.log(`✅ マッチング成功: ${professionalId} が応募`);
-
-    // マッチング完了処理
-    await this.completeMatching(orderId, professionalId, selectedDate);
-    return true;
-  }
-
-  // マッチング完了処理
-  private static async completeMatching(orderId: string, professionalId: string, selectedDate: Date): Promise<void> {
-    const session = this.sessions.get(orderId);
-    if (!session) return;
-
-    // セッション停止
-    this.stopMatching(orderId);
-
-    // 注文ステータス更新
-    const orders = DataService.loadOrders();
-    const updatedOrders = orders.map(order => 
-      order.id === orderId 
-        ? { 
-            ...order, 
-            status: 'matched' as const,
-            assignedProfessionalId: professionalId,
-            scheduledDate: selectedDate,
-            updatedAt: new Date()
-          }
-        : order
+    // 候補者：アクティブ + 住所あり のみ
+    const allPros = DataService.loadProfessionals().filter(
+      (p) => p.isActive && p.address && fullAddress(p.address)
     );
-    DataService.saveOrders(updatedOrders);
-
-    // 全プロフェッショナルから該当注文を削除（リンク無効化）
-    session.notifiedProfessionals.forEach(proId => {
-      this.removeOrderFromProfessional(proId, orderId);
-    });
-
-    // マッチング通知送信
-    const order = updatedOrders.find(o => o.id === orderId);
-    const professional = DataService.loadProfessionals().find(p => p.id === professionalId);
-    
-    if (order && professional) {
-      await NotificationService.sendMatchNotification(order, professional);
+    if (allPros.length === 0) {
+      console.warn('[SequentialMatching] 候補プロがいません。');
+      return;
     }
 
-    console.log(`🎉 マッチング完了: ${orderId} → ${professionalId}`);
-  }
+    const origin = fullAddress(order.address);
+    const sorted = await getSortedByDistance(origin, allPros);
 
-  // マッチング停止
-  static stopMatching(orderId: string): void {
-    const session = this.sessions.get(orderId);
-    if (session) {
-      session.isActive = false;
-      if (session.timerId) {
-        clearTimeout(session.timerId);
+    // 既にマッチ済みなら終了（他タブ・管理画面からの更新を考慮）
+    const isAlreadyFixed = () => {
+      const latest = DataService.loadOrders().find((o) => o.id === order.id);
+      return !latest || ['matched', 'in_progress', 'completed', 'cancelled'].includes(latest.status);
+    };
+
+    for (let i = 0; i < sorted.length; i++) {
+      if (isAlreadyFixed()) {
+        console.log('⛳ [SequentialMatching] 既に確定/終了のため打ち切り:', order.id);
+        return;
       }
-      this.sessions.delete(orderId);
-      console.log(`⏹️ マッチングセッション停止: ${orderId}`);
-    }
-  }
 
-  // 距離順で該当プロフェッショナルを取得
-  private static async findEligibleProfessionalsByDistance(
-    order: Order, 
-    allProfessionals: Professional[]
-  ): Promise<Array<{ professional: Professional; distance: number }>> {
-    console.log(`🔍 プロフェッショナル検索開始: ${allProfessionals.length}名中から検索`);
-    
-    // ラベルでフィルタリング
-    const eligibleBySkill = this.filterByLabels(order, allProfessionals);
-    console.log(`🏷️ ラベルフィルタリング結果: ${eligibleBySkill.length}名`);
-    eligibleBySkill.forEach(pro => {
-      console.log(`   - ${pro.name}: ${pro.labels?.map(l => l.name).join(', ')}`);
-      if (pro.address) {
-        console.log(`     住所: ${pro.address.prefecture} ${pro.address.city} ${pro.address.detail}`);
-      } else {
-        console.log(`     住所: 未設定`);
-      }
-    });
-    
-    if (eligibleBySkill.length === 0) {
-      console.log('❌ ラベルに該当するプロフェッショナルが見つかりません');
-      return [];
-    }
+      const pro = sorted[i];
 
-    // 住所が設定されていないプロを除外
-    const professionalsWithAddress = eligibleBySkill.filter(pro => {
-      if (!pro.address || !pro.address.prefecture || !pro.address.city) {
-        console.log(`⚠️ ${pro.name}: 住所が未設定のためスキップ`);
-        return false;
-      }
-      return true;
-    });
-    
-    console.log(`📍 住所設定済みプロ: ${professionalsWithAddress.length}名`);
-    
-    if (professionalsWithAddress.length === 0) {
-      console.log('❌ 住所が設定されたプロフェッショナルが見つかりません');
-      return [];
-    }
-
-    // Google Maps APIキーの確認
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (!apiKey || apiKey === 'your_google_maps_api_key_here') {
-      console.log('⚠️ Google Maps APIキーが未設定のため、距離計算をスキップして住所設定済みプロを返します');
-      return professionalsWithAddress.map(professional => ({ professional, distance: 0 }));
-    }
-
-    // 距離計算とソート
-    try {
-      console.log(`📍 距離計算開始: ${professionalsWithAddress.length}名の距離を計算中...`);
-      const sortedByDistance = await LocationService.findProfessionalsWithinRadius(
-        order.address,
-        professionalsWithAddress,
-        this.MAX_DISTANCE_KM
-      );
-      
-      console.log(`📏 距離フィルタリング結果: ${sortedByDistance.length}名 (${this.MAX_DISTANCE_KM}km以内)`);
-      sortedByDistance.forEach((item, index) => {
-        console.log(`   ${index + 1}. ${item.professional.name}: ${item.distance}km`);
+      // 通知（Reply-To は運用窓口に）
+      const html = buildInviteHtml(order, pro, i);
+      await EmailService.sendEmail({
+        to: pro.email,
+        subject: `【案件案内】${order.customerName}様のご依頼（順番: ${i + 1}）`,
+        html,
+        replyTo: ADMIN_CONTACT,
       });
-      
-      return sortedByDistance;
-    } catch (error) {
-      console.error('❌ 距離計算エラー:', error);
-      // 距離計算に失敗した場合は、住所設定済みプロをそのまま返す（距離は無限大）
-      console.log('⚠️ 距離計算失敗のため、住所設定済みプロを距離無限大で返す');
-      return professionalsWithAddress.map(professional => ({ professional, distance: Infinity }));
+
+      console.log(`📨 [SequentialMatching] 案内送信 → ${pro.name} (${i + 1}/${sorted.length})`);
+
+      // 次の人へ回す前に待つ
+      await sleep(WAIT_MINUTES * 60 * 1000);
     }
-  }
 
-  // ラベルでフィルタリング
-  private static filterByLabels(order: Order, professionals: Professional[]): Professional[] {
-    const allLabels = DataService.loadLabels();
-    const relevantLabels = this.findRelevantLabels(order.serviceId, order.planId, allLabels);
-    
-    console.log(`🔍 必要ラベル:`, relevantLabels.map(l => l.name));
-    
-    return professionals.filter(pro => {
-      if (!pro.isActive || !pro.labels || pro.labels.length === 0) return false;
-      
-      const hasMatchingLabel = relevantLabels.some(relevantLabel => 
-        pro.labels.some(proLabel => 
-          proLabel.id === relevantLabel.id || 
-          proLabel.name === relevantLabel.name ||
-          this.isLabelMatch(proLabel, relevantLabel)
-        )
-      );
-      
-      if (hasMatchingLabel) {
-        console.log(`✅ ${pro.name}: ラベルマッチ (${pro.labels.map(l => l.name).join(', ')})`);
-      }
-      
-      return hasMatchingLabel;
-    });
-  }
-
-  // サービス・プランに対応するラベルを検索
-  private static findRelevantLabels(serviceId: string, planId: string, allLabels: any[]): any[] {
-    const serviceMapping: { [key: string]: { [key: string]: string[] } } = {
-      'photo-service': {
-        'real-estate': ['不動産撮影'],
-        'portrait': ['ポートレート撮影'],
-        'food': ['フード撮影']
-      },
-      'cleaning-service': {
-        '1ldk': ['1LDK'],
-        '2ldk': ['2LDK'],
-        '3ldk': ['3LDK']
-      },
-      'staff-service': {
-        'translation': ['翻訳'],
-        'interpretation': ['通訳'],
-        'companion': ['イベントコンパニオン']
-      }
-    };
-    
-    const labelNames = serviceMapping[serviceId]?.[planId] || [];
-    
-    return allLabels.filter(label => 
-      labelNames.some(name => 
-        label.name.includes(name) || name.includes(label.name)
-      )
-    );
-  }
-
-  // ラベルマッチング判定
-  private static isLabelMatch(proLabel: any, relevantLabel: any): boolean {
-    if (proLabel.category === relevantLabel.category) return true;
-    if (proLabel.name.includes(relevantLabel.name) || relevantLabel.name.includes(proLabel.name)) {
-      return true;
-    }
-    return false;
-  }
-
-  // プロフェッショナルの新規依頼リストに追加
-  private static addOrderToProfessional(professionalId: string, orderId: string): void {
-    const storageKey = `professional_orders_${professionalId}`;
-    const existingOrders = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    
-    // 重複チェック
-    if (!existingOrders.find((o: any) => o.id === orderId)) {
-      const order = this.getOrderById(orderId);
-      if (order) {
-        existingOrders.push({
-          ...order,
-          createdAt: order.createdAt.toISOString(),
-          updatedAt: order.updatedAt.toISOString(),
-          scheduledDate: order.scheduledDate?.toISOString(),
-          preferredDates: order.preferredDates ? {
-            first: order.preferredDates.first.toISOString(),
-            second: order.preferredDates.second?.toISOString(),
-            third: order.preferredDates.third?.toISOString()
-          } : undefined
-        });
-        
-        localStorage.setItem(storageKey, JSON.stringify(existingOrders));
-        console.log(`📋 プロフェッショナル ${professionalId} に新規依頼 ${orderId} を配信`);
-      }
-    }
-  }
-
-  // プロフェッショナルの依頼を削除
-  private static removeOrderFromProfessional(professionalId: string, orderId: string): void {
-    const storageKey = `professional_orders_${professionalId}`;
-    const orders = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    const updatedOrders = orders.filter((order: any) => order.id !== orderId);
-    
-    localStorage.setItem(storageKey, JSON.stringify(updatedOrders));
-    console.log(`📋 プロフェッショナル ${professionalId} から依頼 ${orderId} を削除`);
-  }
-
-  // 注文取得
-  private static getOrderById(orderId: string): any {
-    const orders = DataService.loadOrders();
-    return orders.find(order => order.id === orderId);
-  }
-
-  // プラン情報取得
-  private static getPlanFromOrder(order: any): any {
-    const planPrices: { [key: string]: number } = {
-      'real-estate': 15000,
-      'portrait': 12000,
-      'food': 18000,
-      '1ldk': 8000,
-      '2ldk': 12000,
-      '3ldk': 16000,
-      'translation': 5000,
-      'interpretation': 8000,
-      'companion': 15000
-    };
-
-    const planNames: { [key: string]: { [key: string]: string } } = {
-      'photo-service': {
-        'real-estate': '不動産撮影',
-        'portrait': 'ポートレート撮影',
-        'food': 'フード撮影'
-      },
-      'cleaning-service': {
-        '1ldk': '1LDK清掃',
-        '2ldk': '2LDK清掃',
-        '3ldk': '3LDK清掃'
-      },
-      'staff-service': {
-        'translation': '翻訳',
-        'interpretation': '通訳',
-        'companion': 'イベントコンパニオン'
-      }
-    };
-
-    return {
-      id: order.planId,
-      name: planNames[order.serviceId]?.[order.planId] || 'サービス',
-      price: planPrices[order.planId] || 0,
-      description: '',
-      serviceId: order.serviceId
-    };
-  }
-
-  // アクティブセッション一覧取得（管理者用）
-  static getActiveSessions(): Array<{
-    orderId: string;
-    currentIndex: number;
-    totalProfessionals: number;
-    notifiedCount: number;
-    createdAt: Date;
-  }> {
-    return Array.from(this.sessions.values()).map(session => ({
-      orderId: session.orderId,
-      currentIndex: session.currentIndex,
-      totalProfessionals: session.eligibleProfessionals.length,
-      notifiedCount: session.notifiedProfessionals.size,
-      createdAt: session.createdAt
-    }));
-  }
-
-  // セッション詳細取得（管理者用）
-  static getSessionDetails(orderId: string): MatchingSession | undefined {
-    return this.sessions.get(orderId);
+    console.log('🏁 [SequentialMatching] 全候補への案内が完了:', order.id);
   }
 }
