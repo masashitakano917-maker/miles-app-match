@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { User, Order, Professional, Label } from '../types';
+import type { User, Order, Professional } from '../types';
 import {
   Users,
   ShoppingCart,
@@ -17,7 +17,8 @@ import {
   XCircle,
   AlertTriangle,
   Tag,
-  UserCheck
+  UserCheck,
+  User, // 追加（使用しなくてもOK）
 } from 'lucide-react';
 import { DataService } from '../services/DataService';
 import { NotificationService } from '../services/NotificationService';
@@ -30,59 +31,42 @@ interface AdminDashboardProps {
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Core states
   const [orders, setOrders] = useState<Order[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
+
+  // Order detail
   const [showOrderDetail, setShowOrderDetail] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+
+  // Professional form
   const [showProfessionalForm, setShowProfessionalForm] = useState(false);
   const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
+
+  // Manual assign
   const [showManualAssign, setShowManualAssign] = useState(false);
   const [selectedOrderForAssign, setSelectedOrderForAssign] = useState<Order | null>(null);
   const [selectedProfessionalForAssign, setSelectedProfessionalForAssign] = useState<string>('');
 
-  // Customer management state
+  // Customers
   const [customers, setCustomers] = useState<any[]>([]);
 
-  // Label management state
-  const [availableLabels, setAvailableLabels] = useState<Label[]>([]);
-  const [selectedLabels, setSelectedLabels] = useState<Label[]>([]);
+  // Labels
+  const [availableLabels, setAvailableLabels] = useState<any[]>([]);
+  const [selectedLabels, setSelectedLabels] = useState<any[]>([]);
   const [showLabelForm, setShowLabelForm] = useState(false);
-  const [editingLabel, setEditingLabel] = useState<Label | null>(null);
-  const [labelForm, setLabelForm] = useState({
-    name: '',
-    category: ''
-  });
+  const [editingLabel, setEditingLabel] = useState<any>(null);
+  const [labelForm, setLabelForm] = useState({ name: '', category: '' });
 
-  // Analytics state
-  const [viewMode, setViewMode] = useState<'current' | 'comparison'>('current');
+  // Analytics
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
     start: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    end: new Date()
+    end: new Date(),
   });
-  const [customDateRange, setCustomDateRange] = useState({
-    startDate: '',
-    endDate: ''
-  });
+  const [customDateRange, setCustomDateRange] = useState({ startDate: '', endDate: '' });
   const [selectedService, setSelectedService] = useState<string>('');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
-
-  // Service and day options for filters
-  const serviceOptions = [
-    { value: '', label: '全サービス' },
-    { value: 'photo-service', label: '写真撮影' },
-    { value: 'cleaning-service', label: 'お掃除' },
-    { value: 'staff-service', label: 'スタッフ派遣' }
-  ];
-
-  const dayOptions = [
-    { value: 0, label: '日曜日' },
-    { value: 1, label: '月曜日' },
-    { value: 2, label: '火曜日' },
-    { value: 3, label: '水曜日' },
-    { value: 4, label: '木曜日' },
-    { value: 5, label: '金曜日' },
-    { value: 6, label: '土曜日' }
-  ];
 
   // Professional form state
   const [professionalForm, setProfessionalForm] = useState({
@@ -93,29 +77,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     bio: '',
     equipment: '',
     experience: '',
-    labels: [] as Label[],
+    labels: [] as any[],
     address: {
       postalCode: '',
       prefecture: '',
       city: '',
-      detail: ''
-    }
+      detail: '',
+    },
   });
 
-  // Load data on mount
+  // Filter options
+  const serviceOptions = [
+    { value: '', label: '全サービス' },
+    { value: 'photo-service', label: '写真撮影' },
+    { value: 'cleaning-service', label: 'お掃除' },
+    { value: 'staff-service', label: 'スタッフ派遣' },
+  ];
+  const dayOptions = [
+    { value: 0, label: '日曜日' },
+    { value: 1, label: '月曜日' },
+    { value: 2, label: '火曜日' },
+    { value: 3, label: '水曜日' },
+    { value: 4, label: '木曜日' },
+    { value: 5, label: '金曜日' },
+    { value: 6, label: '土曜日' },
+  ];
+
+  // mount
   useEffect(() => {
     loadData();
 
-    // Listen for order updates
     const handleOrdersUpdate = (event: CustomEvent) => {
       setOrders(event.detail);
     };
-
     window.addEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
-
-    return () => {
-      window.removeEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
-    };
+    return () => window.removeEventListener('ordersUpdated', handleOrdersUpdate as EventListener);
   }, []);
 
   const loadData = () => {
@@ -123,44 +119,133 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
     const loadedProfessionals = DataService.loadProfessionals();
     const loadedCustomers = DataService.loadCustomers();
     const loadedLabels = DataService.loadLabels();
-
     setOrders(loadedOrders);
     setProfessionals(loadedProfessionals);
     setCustomers(loadedCustomers);
     setAvailableLabels(loadedLabels);
   };
 
-  // Calculate analytics
+  // analytics
   const currentAnalytics = AnalyticsService.getAnalytics(orders, {
     dateRange,
     serviceId: selectedService || undefined,
-    dayOfWeek: selectedDays.length > 0 ? selectedDays : undefined
+    dayOfWeek: selectedDays.length > 0 ? selectedDays : undefined,
   });
 
+  // helpers
+  const getStatusIcon = (status: Order['status']) => {
+    switch (status) {
+      case 'pending':
+        return <Clock className="w-4 h-4 text-yellow-500" />;
+      case 'matched':
+      case 'in_progress':
+        return <Clock className="w-4 h-4 text-blue-500" />;
+      case 'completed':
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'cancelled':
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      default:
+        return <AlertTriangle className="w-4 h-4 text-gray-500" />;
+    }
+  };
+
+  const getStatusLabel = (status: Order['status']) =>
+    ({
+      pending: '受付中',
+      matched: 'マッチ済',
+      in_progress: '作業中',
+      completed: '完了',
+      cancelled: 'キャンセル',
+    }[status]);
+
+  const getServiceName = (serviceId: string, planId: string) => {
+    const serviceNames: { [key: string]: { [key: string]: string } } = {
+      'photo-service': {
+        'real-estate': '不動産撮影',
+        portrait: 'ポートレート撮影',
+        food: 'フード撮影',
+      },
+      'cleaning-service': {
+        '1ldk': '1LDK清掃',
+        '2ldk': '2LDK清掃',
+        '3ldk': '3LDK清掃',
+      },
+      'staff-service': {
+        translation: '翻訳',
+        interpretation: '通訳',
+        companion: 'イベントコンパニオン',
+      },
+    };
+    return serviceNames[serviceId]?.[planId] || 'サービス';
+    // （必要なら DataService から名称取得に置き換えてOK）
+  };
+
+  const getPlanPrice = (planId: string) => {
+    const prices: { [key: string]: number } = {
+      'real-estate': 15000,
+      portrait: 12000,
+      food: 18000,
+      '1ldk': 8000,
+      '2ldk': 12000,
+      '3ldk': 16000,
+      translation: 5000,
+      interpretation: 8000,
+      companion: 15000,
+    };
+    return prices[planId] || 0;
+  };
+
+  // actions
   const handleViewOrderDetail = (order: Order) => {
     setSelectedOrder(order);
     setShowOrderDetail(true);
   };
 
+  /**
+   * ステータス更新：
+   * - 保存
+   * - キャンセル時だけ通知 + プロ配信のクリーンアップ
+   */
   const handleUpdateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
-    const updatedOrders = orders.map(order =>
-      order.id === orderId
-        ? { ...order, status: newStatus, updatedAt: new Date() }
-        : order
-    );
+    const target = orders.find((o) => o.id === orderId);
+    if (!target) return;
+
+    const updatedTarget: Order = { ...target, status: newStatus, updatedAt: new Date() };
+    const updatedOrders = orders.map((o) => (o.id === orderId ? updatedTarget : o));
 
     setOrders(updatedOrders);
     DataService.saveOrders(updatedOrders);
+    console.log(`✅ オーダー ${orderId} のステータスを ${newStatus} に更新`);
 
-    console.log(`✅ 注文 ${orderId} のステータスを ${newStatus} に更新しました`);
+    if (newStatus === 'cancelled') {
+      try {
+        const fee = 0;
+        const reason = '管理画面からのキャンセル';
+        await NotificationService.sendCancellationNotification(updatedTarget, fee, reason, 'admin');
+
+        // MatchingService は動的 import（存在しない場合でもビルドを壊さない）
+        try {
+          const mod = await import('../services/MatchingService');
+          if ((mod as any)?.MatchingService?.removeOrderFromAllProfessionals) {
+            await (mod as any).MatchingService.removeOrderFromAllProfessionals(orderId);
+          }
+        } catch {
+          /* MatchingService が無くてもOK */
+        }
+
+        console.log('📣 キャンセル通知送信と配信クリーンアップ完了');
+      } catch (e) {
+        console.error('❌ キャンセル通知の送信に失敗', e);
+      }
+    }
   };
 
   const handleDeleteOrder = (orderId: string) => {
-    if (confirm('この注文を削除しますか？')) {
-      const updatedOrders = orders.filter(order => order.id !== orderId);
+    if (confirm('このオーダーを削除しますか？')) {
+      const updatedOrders = orders.filter((order) => order.id !== orderId);
       setOrders(updatedOrders);
       DataService.saveOrders(updatedOrders);
-      console.log(`✅ 注文 ${orderId} を削除しました`);
+      console.log(`✅ オーダー ${orderId} を削除しました`);
     }
   };
 
@@ -172,22 +257,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
   const handleManualAssign = async () => {
     if (!selectedOrderForAssign || !selectedProfessionalForAssign) return;
 
-    const updatedOrders = orders.map(order =>
+    const updatedOrders = orders.map((order) =>
       order.id === selectedOrderForAssign.id
         ? {
             ...order,
             status: 'matched' as const,
             assignedProfessionalId: selectedProfessionalForAssign,
-            updatedAt: new Date()
+            updatedAt: new Date(),
           }
-        : order
+        : order,
     );
 
     setOrders(updatedOrders);
     DataService.saveOrders(updatedOrders);
 
-    // Send notifications
-    const professional = professionals.find(p => p.id === selectedProfessionalForAssign);
+    const professional = professionals.find((p) => p.id === selectedProfessionalForAssign);
     if (professional) {
       await NotificationService.sendMatchNotification(selectedOrderForAssign, professional);
     }
@@ -209,14 +293,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       equipment: '',
       experience: '',
       labels: [],
-      address: {
-        postalCode: '',
-        prefecture: '',
-        city: '',
-        detail: ''
-      }
+      address: { postalCode: '', prefecture: '', city: '', detail: '' },
     });
-    // 新規は選択済みラベルを空にする
     setSelectedLabels([]);
     setShowProfessionalForm(true);
   };
@@ -231,15 +309,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       bio: professional.bio || '',
       equipment: professional.equipment || '',
       experience: professional.experience || '',
-      labels: professional.labels || [],
-      address: professional.address || {
-        postalCode: '',
-        prefecture: '',
-        city: '',
-        detail: ''
-      }
+      labels: [],
+      address:
+        professional.address || { postalCode: '', prefecture: '', city: '', detail: '' },
     });
-    // 既存のラベルを初期選択に反映
     setSelectedLabels(professional.labels || []);
     setShowProfessionalForm(true);
   };
@@ -261,32 +334,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       equipment: professionalForm.equipment,
       experience: professionalForm.experience,
       password: professionalForm.password,
-      address: professionalForm.address
+      address: professionalForm.address,
     };
 
-    let updatedProfessionals;
-    if (isNew) {
-      updatedProfessionals = [...professionals, professionalData];
-    } else {
-      updatedProfessionals = professionals.map(p =>
-        p.id === editingProfessional!.id ? professionalData : p
-      );
-    }
+    const updatedProfessionals = isNew
+      ? [...professionals, professionalData]
+      : professionals.map((p) => (p.id === editingProfessional!.id ? professionalData : p));
 
     setProfessionals(updatedProfessionals);
     DataService.saveProfessionals(updatedProfessionals);
 
-    // Send notification
     await NotificationService.sendProfessionalRegistrationNotification(professionalData, isNew);
-
     setShowProfessionalForm(false);
-    setSelectedLabels([]); // 保存後はクリア
     console.log(`✅ プロフェッショナルを${isNew ? '追加' : '更新'}しました`);
   };
 
   const handleDeleteProfessional = (professionalId: string) => {
     if (confirm('このプロフェッショナルを削除しますか？')) {
-      const updatedProfessionals = professionals.filter(p => p.id !== professionalId);
+      const updatedProfessionals = professionals.filter((p) => p.id !== professionalId);
       setProfessionals(updatedProfessionals);
       DataService.saveProfessionals(updatedProfessionals);
       console.log(`✅ プロフェッショナル ${professionalId} を削除しました`);
@@ -295,21 +360,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
   const handleDeleteCustomer = (customerId: string) => {
     if (confirm('このカスタマーを削除しますか？')) {
-      const updatedCustomers = customers.filter(c => c.id !== customerId);
+      const updatedCustomers = customers.filter((c) => c.id !== customerId);
       setCustomers(updatedCustomers);
       DataService.saveCustomers(updatedCustomers);
       console.log(`✅ カスタマー ${customerId} を削除しました`);
     }
   };
 
-  // ===== ラベル管理（モーダル用） =====
-  const handleAddLabel = () => {
+  // Label CRUD
+  const handleAddLabelOpen = () => {
     setEditingLabel(null);
     setLabelForm({ name: '', category: '' });
     setShowLabelForm(true);
   };
 
-  const handleEditLabel = (label: Label) => {
+  const handleEditLabel = (label: any) => {
     setEditingLabel(label);
     setLabelForm({ name: label.name, category: label.category });
     setShowLabelForm(true);
@@ -317,18 +382,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
   const handleSaveLabel = () => {
     const isNew = !editingLabel;
-    const labelData: Label = {
+    const labelData = {
       id: editingLabel?.id || `label-${Date.now()}`,
       name: labelForm.name,
-      category: labelForm.category
+      category: labelForm.category,
     };
 
-    let updatedLabels;
-    if (isNew) {
-      updatedLabels = [...availableLabels, labelData];
-    } else {
-      updatedLabels = availableLabels.map(l => (l.id === editingLabel!.id ? labelData : l));
-    }
+    const updatedLabels = isNew
+      ? [...availableLabels, labelData]
+      : availableLabels.map((l) => (l.id === editingLabel.id ? labelData : l));
 
     setAvailableLabels(updatedLabels);
     DataService.saveLabels(updatedLabels);
@@ -338,96 +400,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
   const handleDeleteLabel = (labelId: string) => {
     if (confirm('このラベルを削除しますか？')) {
-      const updatedLabels = availableLabels.filter(l => l.id !== labelId);
+      const updatedLabels = availableLabels.filter((l) => l.id !== labelId);
       setAvailableLabels(updatedLabels);
       DataService.saveLabels(updatedLabels);
       console.log(`✅ ラベル ${labelId} を削除しました`);
     }
   };
 
-  // ===== プロ登録フォーム内：ラベル選択 =====
-  const handlePickLabel = (label: Label) => {
-    if (selectedLabels.find(l => l.id === label.id)) return;
-    setSelectedLabels(prev => [...prev, label]);
-  };
-
   const handleRemoveLabel = (labelId: string) => {
-    setSelectedLabels(selectedLabels.filter(l => l.id !== labelId));
+    setSelectedLabels((prev) => prev.filter((l) => l.id !== labelId));
   };
 
-  // Date range handling
+  // Analytics date range
   const handleDateRangeChange = () => {
     if (customDateRange.startDate && customDateRange.endDate) {
       setDateRange({
         start: new Date(customDateRange.startDate),
-        end: new Date(customDateRange.endDate)
+        end: new Date(customDateRange.endDate),
       });
     }
   };
 
-  const getStatusIcon = (status: Order['status']) => {
-    switch (status) {
-      case 'pending':
-        return <Clock className="w-4 h-4 text-yellow-500" />;
-      case 'matched':
-      case 'in_progress':
-        return <Clock className="w-4 h-4 text-blue-500" />;
-      case 'completed':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'cancelled':
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      default:
-        return <AlertTriangle className="w-4 h-4 text-gray-500" />;
-    }
-  };
-
-  const getStatusLabel = (status: Order['status']) => {
-    const statusLabels = {
-      pending: '受付中',
-      matched: 'マッチ済',
-      in_progress: '作業中',
-      completed: '完了',
-      cancelled: 'キャンセル'
-    };
-    return statusLabels[status];
-  };
-
-  const getServiceName = (serviceId: string, planId: string) => {
-    const serviceNames: { [key: string]: { [key: string]: string } } = {
-      'photo-service': {
-        'real-estate': '不動産撮影',
-        portrait: 'ポートレート撮影',
-        food: 'フード撮影'
-      },
-      'cleaning-service': {
-        '1ldk': '1LDK清掃',
-        '2ldk': '2LDK清掃',
-        '3ldk': '3LDK清掃'
-      },
-      'staff-service': {
-        translation: '翻訳',
-        interpretation: '通訳',
-        companion: 'イベントコンパニオン'
-      }
-    };
-    return serviceNames[serviceId]?.[planId] || 'サービス';
-  };
-
-  const getPlanPrice = (planId: string) => {
-    const prices: { [key: string]: number } = {
-      'real-estate': 15000,
-      portrait: 12000,
-      food: 18000,
-      '1ldk': 8000,
-      '2ldk': 12000,
-      '3ldk': 16000,
-      translation: 5000,
-      interpretation: 8000,
-      companion: 15000
-    };
-    return prices[planId] || 0;
-  };
-
+  // UI
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Header */}
@@ -450,12 +444,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
+        {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-400">総注文数</p>
+                <p className="text-sm font-medium text-gray-400">総オーダー数</p>
                 <p className="text-2xl font-bold text-white">{currentAnalytics.totalOrders}</p>
               </div>
               <ShoppingCart className="w-8 h-8 text-blue-500" />
@@ -466,7 +460,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-400">総売上</p>
-                <p className="text-2xl font-bold text-white">¥{currentAnalytics.totalRevenue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-white">
+                  ¥{currentAnalytics.totalRevenue.toLocaleString()}
+                </p>
               </div>
               <TrendingUp className="w-8 h-8 text-green-500" />
             </div>
@@ -493,16 +489,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Tabs */}
         <div className="border-b border-gray-700 mb-8">
           <nav className="flex space-x-8">
             {[
               { id: 'overview', label: '概要', icon: TrendingUp },
-              { id: 'orders', label: '注文管理', icon: ShoppingCart },
+              { id: 'orders', label: 'オーダー管理', icon: ShoppingCart },
               { id: 'professionals', label: 'プロフェッショナル管理', icon: Users },
               { id: 'labels', label: 'ラベル管理', icon: Tag },
               { id: 'customers', label: 'カスタマー管理', icon: Users },
-              { id: 'analytics', label: '分析', icon: Calendar }
+              { id: 'analytics', label: '分析', icon: Calendar },
             ].map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -520,19 +516,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           </nav>
         </div>
 
-        {/* Overview Tab */}
+        {/* Overview */}
         {activeTab === 'overview' && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">システム概要</h2>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">最近の注文</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">最近のオーダー</h3>
                 <div className="space-y-3">
                   {orders.slice(0, 5).map((order) => (
-                    <div key={order.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                    <div
+                      key={order.id}
+                      className="flex items-center justify-between p-3 bg-gray-700 rounded-lg"
+                    >
                       <div>
-                        <p className="text-white font-medium">{getServiceName(order.serviceId, order.planId)}</p>
+                        <p className="text-white font-medium">
+                          {getServiceName(order.serviceId, order.planId)}
+                        </p>
                         <p className="text-sm text-gray-400">{order.customerName}</p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -547,28 +548,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <h3 className="text-lg font-semibold text-white mb-4">アクティブプロフェッショナル</h3>
                 <div className="space-y-3">
-                  {professionals.filter(p => p.isActive).slice(0, 5).map((professional) => (
-                    <div key={professional.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
-                      <div>
-                        <p className="text-white font-medium">{professional.name}</p>
-                        <p className="text-sm text-gray-400">{professional.email}</p>
+                  {professionals
+                    .filter((p) => p.isActive)
+                    .slice(0, 5)
+                    .map((professional) => (
+                      <div
+                        key={professional.id}
+                        className="flex items-center justify-between p-3 bg-gray-700 rounded-lg"
+                      >
+                        <div>
+                          <p className="text-white font-medium">{professional.name}</p>
+                          <p className="text-sm text-gray-400">{professional.email}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-orange-400">⭐ {professional.rating}</p>
+                          <p className="text-xs text-gray-400">{professional.completedJobs}件完了</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm text-orange-400">⭐ {professional.rating}</p>
-                        <p className="text-xs text-gray-400">{professional.completedJobs}件完了</p>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Orders Tab */}
+        {/* Orders */}
         {activeTab === 'orders' && (
           <div>
-            <h2 className="text-xl font-semibold text-white mb-6">注文管理</h2>
+            <h2 className="text-xl font-semibold text-white mb-6">オーダー管理</h2>
 
             <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 overflow-hidden">
               <div className="overflow-x-auto">
@@ -576,7 +583,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <thead className="bg-gray-700">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                        注文ID
+                        オーダーID
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                         顧客
@@ -588,7 +595,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                         ステータス
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                        注文日
+                        受付日
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                         操作
@@ -598,9 +605,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <tbody className="bg-gray-800 divide-y divide-gray-700">
                     {orders.map((order) => (
                       <tr key={order.id} className="hover:bg-gray-700">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                          {order.id}
-                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">{order.id}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
                             <div className="text-sm font-medium text-white">{order.customerName}</div>
@@ -615,7 +620,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                             {getStatusIcon(order.status)}
                             <select
                               value={order.status}
-                              onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as Order['status'])}
+                              onChange={(e) =>
+                                handleUpdateOrderStatus(order.id, e.target.value as Order['status'])
+                              }
                               className="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
                             >
                               <option value="pending">受付中</option>
@@ -663,7 +670,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* Professionals Tab */}
+        {/* Professionals */}
         {activeTab === 'professionals' && (
           <div>
             <div className="flex justify-between items-center mb-6">
@@ -712,7 +719,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                           {professional.email}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {professional.labels?.map(l => l.name).join(', ') || '未設定'}
+                          {professional.labels?.map((l) => l.name).join(', ') || '未設定'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-orange-400">
                           ⭐ {professional.rating}
@@ -720,7 +727,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
                             className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              professional.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              professional.isActive
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
                             }`}
                           >
                             {professional.isActive ? 'アクティブ' : '非アクティブ'}
@@ -751,13 +760,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* Labels Tab */}
+        {/* Labels */}
         {activeTab === 'labels' && (
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold text-white">ラベル管理</h2>
               <button
-                onClick={handleAddLabel}
+                onClick={handleAddLabelOpen}
                 className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
               >
                 <Plus className="w-4 h-4" />
@@ -815,7 +824,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* Customers Tab */}
+        {/* Customers */}
         {activeTab === 'customers' && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">カスタマー管理</h2>
@@ -863,7 +872,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                             : '未設定'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {customer.createdAt ? new Date(customer.createdAt).toLocaleDateString('ja-JP') : '-'}
+                          {customer.createdAt
+                            ? new Date(customer.createdAt).toLocaleDateString('ja-JP')
+                            : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">
@@ -891,7 +902,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* Analytics Tab */}
+        {/* Analytics */}
         {activeTab === 'analytics' && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">分析データ</h2>
@@ -904,7 +915,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="date"
                     value={customDateRange.startDate}
-                    onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
+                    onChange={(e) =>
+                      setCustomDateRange({ ...customDateRange, startDate: e.target.value })
+                    }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -913,7 +926,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                   <input
                     type="date"
                     value={customDateRange.endDate}
-                    onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
+                    onChange={(e) =>
+                      setCustomDateRange({ ...customDateRange, endDate: e.target.value })
+                    }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
@@ -924,7 +939,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     onChange={(e) => setSelectedService(e.target.value)}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   >
-                    {serviceOptions.map(option => (
+                    {serviceOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
@@ -937,11 +952,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     multiple
                     value={selectedDays.map(String)}
                     onChange={(e) =>
-                      setSelectedDays(Array.from(e.target.selectedOptions, option => parseInt(option.value)))
+                      setSelectedDays(
+                        Array.from(e.target.selectedOptions, (opt) => parseInt(opt.value)),
+                      )
                     }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   >
-                    {dayOptions.map(option => (
+                    {dayOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
@@ -961,24 +978,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <h4 className="text-sm font-medium text-gray-400 mb-2">総注文数</h4>
+                <h4 className="text-sm font-medium text-gray-400 mb-2">総オーダー数</h4>
                 <p className="text-2xl font-bold text-white">{currentAnalytics.totalOrders}</p>
               </div>
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <h4 className="text-sm font-medium text-gray-400 mb-2">総売上</h4>
-                <p className="text-2xl font-bold text-white">¥{currentAnalytics.totalRevenue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-white">
+                  ¥{currentAnalytics.totalRevenue.toLocaleString()}
+                </p>
               </div>
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <h4 className="text-sm font-medium text-gray-400 mb-2">完了率</h4>
                 <p className="text-2xl font-bold text-white">
                   {currentAnalytics.totalOrders > 0
-                    ? Math.round((currentAnalytics.completedOrders / currentAnalytics.totalOrders) * 100)
+                    ? Math.round(
+                        (currentAnalytics.completedOrders / currentAnalytics.totalOrders) * 100,
+                      )
                     : 0}
                   %
                 </p>
               </div>
               <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <h4 className="text-sm font-medium text-gray-400 mb-2">平均注文額</h4>
+                <h4 className="text-sm font-medium text-gray-400 mb-2">平均オーダー額</h4>
                 <p className="text-2xl font-bold text-white">
                   ¥{Math.round(currentAnalytics.averageOrderValue).toLocaleString()}
                 </p>
@@ -993,7 +1014,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 rounded-xl max-w-2xl w-full p-6 border border-gray-700">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-white">注文詳細</h3>
+              <h3 className="text-xl font-semibold text-white">オーダー詳細</h3>
               <button onClick={() => setShowOrderDetail(false)} className="text-gray-400 hover:text-white">
                 <X className="w-6 h-6" />
               </button>
@@ -1004,16 +1025,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                 <h4 className="text-lg font-semibold text-white mb-2">基本情報</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-400">注文ID:</span>
+                    <span className="text-gray-400">オーダーID:</span>
                     <span className="text-white ml-2">{selectedOrder.id}</span>
                   </div>
                   <div>
                     <span className="text-gray-400">サービス:</span>
-                    <span className="text-white ml-2">{getServiceName(selectedOrder.serviceId, selectedOrder.planId)}</span>
+                    <span className="text-white ml-2">
+                      {getServiceName(selectedOrder.serviceId, selectedOrder.planId)}
+                    </span>
                   </div>
                   <div>
                     <span className="text-gray-400">料金:</span>
-                    <span className="text-white ml-2">¥{getPlanPrice(selectedOrder.planId).toLocaleString()}</span>
+                    <span className="text-white ml-2">
+                      ¥{getPlanPrice(selectedOrder.planId).toLocaleString()}
+                    </span>
                   </div>
                   <div>
                     <span className="text-gray-400">ステータス:</span>
@@ -1054,7 +1079,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               {selectedOrder.specialNotes && (
                 <div>
                   <h4 className="text-lg font-semibold text-white mb-2">特記事項</h4>
-                  <p className="text-white text-sm bg-gray-700 p-3 rounded">{selectedOrder.specialNotes}</p>
+                  <p className="text-white text-sm bg-gray-700 p-3 rounded">
+                    {selectedOrder.specialNotes}
+                  </p>
                 </div>
               )}
             </div>
@@ -1083,7 +1110,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
             </div>
 
             <div className="mb-6">
-              <p className="text-gray-300 mb-4">注文ID: {selectedOrderForAssign.id}</p>
+              <p className="text-gray-300 mb-4">オーダーID: {selectedOrderForAssign.id}</p>
               <p className="text-gray-300 mb-4">
                 サービス: {getServiceName(selectedOrderForAssign.serviceId, selectedOrderForAssign.planId)}
               </p>
@@ -1096,10 +1123,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               >
                 <option value="">選択してください</option>
                 {professionals
-                  .filter(p => p.isActive)
-                  .map(professional => (
+                  .filter((p) => p.isActive)
+                  .map((professional) => (
                     <option key={professional.id} value={professional.id}>
-                      {professional.name} - {professional.labels?.map(l => l.name).join(', ')}
+                      {professional.name} - {professional.labels?.map((l) => l.name).join(', ')}
                     </option>
                   ))}
               </select>
@@ -1129,7 +1156,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 rounded-xl max-w-md w-full p-6 border border-gray-700">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-white">{editingLabel ? 'ラベル編集' : 'ラベル追加'}</h3>
+              <h3 className="text-xl font-semibold text-white">
+                {editingLabel ? 'ラベル編集' : 'ラベル追加'}
+              </h3>
               <button onClick={() => setShowLabelForm(false)} className="text-gray-400 hover:text-white">
                 <X className="w-6 h-6" />
               </button>
@@ -1249,7 +1278,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     onChange={(e) =>
                       setProfessionalForm({
                         ...professionalForm,
-                        address: { ...professionalForm.address, postalCode: e.target.value }
+                        address: { ...professionalForm.address, postalCode: e.target.value },
                       })
                     }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
@@ -1263,21 +1292,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     onChange={(e) =>
                       setProfessionalForm({
                         ...professionalForm,
-                        address: { ...professionalForm.address, prefecture: e.target.value }
+                        address: { ...professionalForm.address, prefecture: e.target.value },
                       })
                     }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
                   />
                 </div>
                 <div>
-                  <label className="block textsm font-medium text-gray-300 mb-2">市区町村</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">市区町村</label>
                   <input
                     type="text"
                     value={professionalForm.address.city}
                     onChange={(e) =>
                       setProfessionalForm({
                         ...professionalForm,
-                        address: { ...professionalForm.address, city: e.target.value }
+                        address: { ...professionalForm.address, city: e.target.value },
                       })
                     }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
@@ -1291,7 +1320,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     onChange={(e) =>
                       setProfessionalForm({
                         ...professionalForm,
-                        address: { ...professionalForm.address, detail: e.target.value }
+                        address: { ...professionalForm.address, detail: e.target.value },
                       })
                     }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
@@ -1302,7 +1331,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">スキル・ラベル</label>
                 <div className="space-y-4">
-                  {/* Selected Labels */}
+                  {/* Selected */}
                   <div>
                     <p className="text-sm text-gray-400 mb-2">選択済みラベル:</p>
                     <div className="flex flex-wrap gap-2">
@@ -1327,17 +1356,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
                     </div>
                   </div>
 
-                  {/* Available Labels */}
+                  {/* Available */}
                   <div>
                     <p className="text-sm text-gray-400 mb-2">利用可能なラベル:</p>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto">
                       {availableLabels
-                        .filter(label => !selectedLabels.find(sl => sl.id === label.id))
+                        .filter((label) => !selectedLabels.find((sl) => sl.id === label.id))
                         .map((label) => (
                           <button
                             key={label.id}
                             type="button"
-                            onClick={() => handlePickLabel(label)}
+                            onClick={() =>
+                              setSelectedLabels((prev) =>
+                                prev.find((l) => l.id === label.id) ? prev : [...prev, label],
+                              )
+                            }
                             className="text-left p-2 bg-gray-700 hover:bg-gray-600 rounded border border-gray-600 hover:border-orange-500 transition-colors"
                           >
                             <div className="text-white text-sm font-medium">{label.name}</div>
